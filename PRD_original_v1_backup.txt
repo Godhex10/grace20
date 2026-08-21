@@ -1,0 +1,84 @@
+📑 REVISED PRODUCT REQUIREMENTS DOCUMENT (PRD)
+Product Name: G.R.A.C.E.
+Meaning: Genuinely Reliable Assistant for Command & Execution
+Architecture Style: Pageless, Grid-Mapped Contextual Workspace
+Target Output: Web-First SPA (Chrome/Blink optimized) $\rightarrow$ Future Native Desktop Executable via Electron
+🧠 1. Product Overview & Persona
+G.R.A.C.E. is a local-first, hybrid AI command center designed as a single-page fluid workspace. Traditional page navigation is entirely eliminated. The interface relies on a dynamic responsive environment where independent UI modules (Widgets) spawn, auto-position, and dismiss themselves via text or voice commands.
+The Persona
+Tone: Grounded, conversational, highly intelligent, and subtly witty. She acts as a capable engineering partner—devoid of corporate platitudes or aggressive sci-fi tropes.
+Interaction Model: Context-dependent execution. Grace dynamically chooses whether to update the UI visually, reply purely via audio, or queue notifications depending on what the user is currently doing.
+🎯 2. Core Architecture & Stack (Web-First Deployment)
+To guarantee stability in a standard web browser before wrapping into Electron, the stack strictly separates client-side rendering from system execution:
+Frontend Shell: HTML5, Bootstrap 5, Vanilla JavaScript (ES6+ Web Components).
+Layout Engine: Gridstack.js. Manages matrix grid positioning, snapping, and layout states.
+Local Backend Engine: Python + FastAPI. Runs locally on the user's loopback interface (http://127.0.0.1:8000). Handles local file reading, OS script staging, database coordination, and tiered AI routing.
+Local Database: SQLite. Accessed exclusively by the FastAPI backend via an ORM/driver layer, isolating the frontend from raw SQL execution.
+Intelligence Layer: Two-Tiered Hybrid Router. Fast, local keyword/regex parsing combined with the Gemini API for asynchronous deep reasoning and code synthesis.
+🧱 3. The Context-Aware Widget Lifecycle & Routing System
+The interaction loop handles compound inputs and heavy data streaming without blocking the UI or sacrificing user focus.
+3.1 Step 1: The Two-Tiered Routing Pipeline (Input Ingestion)
+When a raw string is sent via the Web Speech API or text input to FastAPI, it bypasses the cloud initially:
+Tier 1 (The Fast Path): FastAPI passes the string through a local regex/keyword matrix. If obvious tokens (e.g., &quot;weather&quot;, &quot;tasks&quot;) are found, the system hits an immediate confidence score threshold ($\ge 90\%$) and moves to Step 2 within 50 milliseconds.
+Tier 2 (The Intent Fallback): If the input is abstract (&quot;Will the skies ruin my plans today?&quot;), the local parser yields low confidence. FastAPI instantly commands the frontend to show a localized &quot;Thinking...&quot; state and forwards the raw text to the Gemini API to extract structural JSON intent.
+3.2 Step 2: Context Evaluation (Visual vs. Auditory)
+Before spawning any DOM elements, the frontend evaluates the current workspace layout state:
+Scenario A (Open Workspace): The workspace is clear. Gridstack.js immediately allocates coordinates, spawns the requested widgets, and sets up Server-Sent Events (SSE) data streams.
+Scenario B (Fullscreen Focus Mode): The user is actively engaging with a widget (e.g., Code Panel has window.activeFocus = true). The system is forbidden from disrupting the screen.
+If the command can be answered via voice (e.g., Weather), Grace defaults to Voice-Only Modality.
+If the command requires visual data (e.g., a chart), Grace suppresses the visual spawn, speaks a confirmation prompt (&quot;I have generated the chart. Say 'Maximize' to view it&quot;), and holds the widget in a background queue.
+3.3 Step 3: Isolated Runtime & Safe Destructor Sequence
+Each active widget communicates via its own targeted SSE channel (/api/stream/{widget_id}).
+When a widget is closed via voice or UI interaction, the frontend initiates a hard teardown:
+The explicit Javascript destructor function closes the specific SSE network socket.
+All associated event listeners are programmatically unlinked from the DOM window object.
+Gridstack.js reclaims the DOM node, forcing garbage collection to prevent memory leaks within the browser runtime.
+🗂️ 4. Refactored Database Schema (SQLite)
+The data layer acts as an immutable interaction log rather than a flat file cabinet, ensuring voice conversations, UI layouts, and context are fully searchable.
+SQL
+-- Active Core Checklist Items
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    status TEXT CHECK(status IN ('todo', 'done')) DEFAULT 'todo',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    due_date DATETIME
+);
+-- Refactored Hybrid Interaction & Context Log
+CREATE TABLE IF NOT EXISTS interaction_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    user_input TEXT NOT NULL,
+    input_type TEXT CHECK(input_type IN ('text', 'voice')) NOT NULL,
+    grace_response TEXT,
+    response_modality TEXT CHECK(response_modality IN ('voice_only', 'widget_only', 'hybrid')) NOT NULL,
+    triggered_widgets TEXT,                  -- Stored as a JSON array string: '[&quot;WIDGET_WEATHER&quot;]'
+    layout_context TEXT NOT NULL               -- Active layout state: 'FULLSCREEN_CODE' or 'OPEN_GRID'
+);
+-- Long-Term Declarative Memory (Extracted Facts)
+CREATE TABLE IF NOT EXISTS long_term_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fact_context TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+🔊 5. System Audio Integration & Safety Boundaries
+When running in the web browser environment, audio manipulation is bounded by Web Audio API constraints until native wrappers are added.
+5.1 Conditional Process Ducking (Desktop Paradigm)
+Before utilizing Text-to-Speech (TTS) to deliver a voice-only response, the local Python engine polls the host operating system's audio mixer:
+Communication Check: If an active process flag matches known VoIP/Conferencing signatures (e.g., Zoom, Teams, WebRTC meeting tabs), audio ducking is aborted completely. Grace stays silent and pushes a non-intrusive notification toast to the bottom of the screen.
+Media Check: If only standard browser audio or desktop media players are running, FastAPI selectively attenuates those processes by 70%, executes the TTS response, and restores volume immediately upon completion.
+🔐 6. System Access & Sandboxed Security Architecture
+Because Grace acts as an engineering partner, security must mitigate malicious execution without inducing user confirmation fatigue.
+6.1 Scoped Trust Tokens (Mitigating Confirmation Fatigue)
+Terminal execution and script runs are regulated by time-bound tokens:
+The first execution request of a session requires an absolute manual click or voice confirmation override.
+Upon confirmation, the FastAPI backend issues a Session-Scoped Trust Token valid for 15 minutes. This token is strictly locked to that specific project working directory.
+Subsequent routine execution commands within that scope bypass confirmation prompts. Any cross-directory jumps or administrative commands immediately revoke the token and trigger a lockdown prompt.
+6.2 Shadow Copy & Diff Engine (Local File Protection)
+Grace is physically restricted from overwriting local project files directly.
+Shadowing: When a file modification is ordered (&quot;Grace, patch the error in app.js&quot;), FastAPI copies the target file into a hidden workspace folder (.grace/sandbox/).
+Modification: The AI layer applies code edits exclusively to the sandboxed file copy.
+The Diff View: The frontend captures the differences and renders a side-by-side, git-style visual Diff Code Workspace.
+User-In-The-Loop Merge: Changes remain completely isolated until the user reviews the green/red line changes and manually clicks &quot;Apply Merge&quot; or gives the explicit voice confirmation: &quot;Grace, apply the fix.&quot;
+The specification is updated and locked to reflect a secure, fast, browser-ready development roadmap.

@@ -1,0 +1,39 @@
+# ── Secrets — NEVER commit these ──────────────────────────────────────────
+.env
+*.env
+!*.env.example
+grace_backend/.env
+google_token.json
+grace_backend/google_token.json
+*token*.json
+*.key
+*.pem
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ── Databases / backups (local data, not source) ──────────────────────────
+*.db
+*.db.bak
+*.sqlite
+*.sqlite3
+.grace/
+grace-backups/
+
+# ── Logs ──────────────────────────────────────────────────────────────────
+*.log
+
+# ── Editor / OS / build artifacts ─────────────────────────────────────────
+.claude/settings.local.json
+*.vsix
+.DS_Store
+Thumbs.db
+~$*
+
+# ── Large / legacy binaries (regeneratable, not needed in the repo) ────────
+grace_backend/piper_voices/

@@ -1,0 +1,3635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GRACE</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
+<!-- CodeMirror -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/comment/comment.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@200;300;400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles.css?v=20260821a">
+</head>
+<body>
+
+<div class="grid-bg"></div>
+<div class="border-frame"></div>
+<div class="status-txt" id="statusTxt">System online · Radar Array Active</div>
+
+<!-- ══ ORB ══ -->
+<div class="stage">
+  <div class="orb-wrap">
+    <div class="orb-glow"></div>
+    <svg class="orb-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"  stop-color="#ffffff" stop-opacity="0"/>
+          <stop offset="25%" stop-color="#ffffff" stop-opacity=".5"/>
+          <stop offset="55%" stop-color="#ffffff" stop-opacity=".8"/>
+          <stop offset="80%" stop-color="#888888" stop-opacity=".4"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="rb" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"  stop-color="#ffffff" stop-opacity="0"/>
+          <stop offset="40%" stop-color="#ffffff" stop-opacity=".9"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="fg"><feGaussianBlur stdDeviation="3"/></filter>
+      </defs>
+      <circle cx="100" cy="100" r="72" fill="none" stroke="url(#rg)" stroke-width="12" opacity=".1" filter="url(#fg)"/>
+      <circle class="rm" cx="100" cy="100" r="72" stroke="url(#rg)" stroke-width="3"/>
+      <circle class="rs" cx="100" cy="100" r="70.5" stroke="url(#rb)" stroke-width="1"/>
+      <path class="aw"  stroke-width="2"   d="M100,172 A72,72 0 0,1 31,136"/>
+      <path class="aw2" stroke-width="1.2" d="M152,47 A72,72 0 0,1 172,100"/>
+      <g id="ticks" opacity=".25"></g>
+    </svg>
+    <div class="orb-core"></div>
+    <div class="orb-label">GRACE</div>
+  </div>
+</div>
+
+<!-- ══ MAP WIDGET ══ -->
+<div id="w-map">
+  <div class="map-header">
+    <div class="map-header-dot"></div>
+    <div class="map-header-label">Tactical System Grid</div>
+    <div class="map-coords" id="mapCoords">0.0000° N, 0.0000° E</div>
+  </div>
+  <div class="map-footer">
+    <div class="map-stat">LYR: <span id="layerLabel">Dark</span></div>
+    <div class="footer-div"></div>
+    <div class="map-stat">TRAF: <span id="trafficLabel" style="color:rgba(200,225,255,0.4)">OFF</span></div>
+    <div class="footer-div"></div>
+    <div class="zoom-btn" onclick="mapRotateLeft()"  title="Rotate Left">↺</div>
+    <div class="zoom-btn" onclick="mapRotateRight()" title="Rotate Right">↻</div>
+    <div class="zoom-btn" onclick="mapResetBearing()" title="Reset North">⊕</div>
+    <div class="zoom-btn" id="btnTraffic" onclick="toggleTraffic()" title="Toggle Traffic">🚦</div>
+    <div class="footer-div"></div>
+    <div class="map-search">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="mapSearchIn" placeholder="SEARCH CORE COORDS..." onkeydown="searchLocation(event)">
+    </div>
+    <div class="footer-div"></div>
+    <div class="map-zoom-btns">
+      <div class="zoom-btn" onclick="mapZoomIn()">+</div>
+      <div class="zoom-btn" onclick="mapZoomOut()">-</div>
+      <div class="zoom-btn" id="btnGoMe" onclick="goToMe()">⌖</div>
+    </div>
+    <div class="footer-div"></div>
+    <div class="map-close" onclick="closeWidget('w-map')">×</div>
+  </div>
+  <div id="leaflet-map"></div>
+</div>
+
+<!-- ══ KANBAN BOARD ══ -->
+<div id="w-kanban">
+  <div class="kanban-hud">
+    <div class="kanban-hud-dot"></div>
+    <div class="kanban-hud-title">Task</div>
+    <div class="kanban-div"></div>
+    <div class="kanban-hud-stats">
+      <div class="kanban-stat">TOTAL: <span id="kb-total">0</span></div>
+      <div class="kanban-div"></div>
+      <div class="kanban-stat">ACTIVE: <span id="kb-active">0</span></div>
+      <div class="kanban-div"></div>
+      <div class="kanban-stat">DONE: <span id="kb-done">0</span></div>
+      <div class="kanban-div"></div>
+      <div class="kanban-stat">HIGH: <span id="kb-high">0</span></div>
+    </div>
+  </div>
+  <div class="kanban-controls">
+    <div class="kanban-add-btn" onclick="openNewTaskModal()">[ + NEW TASK ]</div>
+    <div class="footer-div"></div>
+    <div class="kanban-close-btn" onclick="closeWidget('w-kanban')">×</div>
+  </div>
+  <div class="kanban-board">
+    <div class="kanban-col col-todo" id="col-todo" ondragover="onDragOver(event)" ondrop="onDrop(event,'todo')" ondragleave="onDragLeave(event)">
+      <div class="kanban-col-header">
+        <div class="kanban-col-dot"></div>
+        <div class="kanban-col-title">To Do</div>
+        <div class="kanban-col-count" id="count-todo">0</div>
+      </div>
+      <div class="kanban-cards" id="cards-todo"></div>
+      <div class="kanban-col-add" onclick="openNewTaskModal('todo')">+ Add Card</div>
+    </div>
+    <div class="kanban-col col-inprog" id="col-inprog" ondragover="onDragOver(event)" ondrop="onDrop(event,'inprog')" ondragleave="onDragLeave(event)">
+      <div class="kanban-col-header">
+        <div class="kanban-col-dot"></div>
+        <div class="kanban-col-title">In Progress</div>
+        <div class="kanban-col-count" id="count-inprog">0</div>
+      </div>
+      <div class="kanban-cards" id="cards-inprog"></div>
+      <div class="kanban-col-add" onclick="openNewTaskModal('inprog')">+ Add Card</div>
+    </div>
+    <div class="kanban-col col-done" id="col-done" ondragover="onDragOver(event)" ondrop="onDrop(event,'done')" ondragleave="onDragLeave(event)">
+      <div class="kanban-col-header">
+        <div class="kanban-col-dot"></div>
+        <div class="kanban-col-title">Done</div>
+        <div class="kanban-col-count" id="count-done">0</div>
+      </div>
+      <div class="kanban-cards" id="cards-done"></div>
+      <div class="kanban-col-add" onclick="openNewTaskModal('done')">+ Add Card</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DETAIL BACKDROP (sits under detail widget) ══ -->
+<div id="detail-backdrop"></div>
+
+<!-- ══ TASK DETAIL WIDGET ══ -->
+<div class="widget" id="w-task-detail">
+  <div class="w-scan"></div>
+  <div class="w-header" onmousedown="dragStart(event,'w-task-detail')">
+    <div class="w-header-dot"></div>
+    <div class="w-header-label" id="detail-header-label">Task_Detail</div>
+    <div class="detail-delete-btn" id="detail-delete-btn" title="Delete this task" onclick="deleteCurrentTask(event)">🗑 DELETE</div>
+    <div class="w-close" onclick="closeWidget('w-task-detail')">✕</div>
+  </div>
+  <div class="detail-body">
+    <div class="detail-title" id="detail-title">—</div>
+    <div class="detail-meta-row">
+      <div class="detail-priority hi" id="detail-priority">High</div>
+      <div class="detail-tag" id="detail-tag">—</div>
+      <div class="detail-due" id="detail-due">—</div>
+    </div>
+    <div class="detail-desc" id="detail-desc">No description provided.</div>
+    <div class="detail-section-label">Checklist</div>
+    <div class="detail-checklist" id="detail-checklist"></div>
+    <div class="detail-prog-wrap">
+      <div class="detail-prog-row">
+        <div class="detail-prog-label">Progress</div>
+        <div class="detail-prog-pct" id="detail-prog-pct">0%</div>
+      </div>
+      <div class="detail-prog-track">
+        <div class="detail-prog-fill" id="detail-prog-fill" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="detail-section-label">Activity Log</div>
+    <div class="detail-log" id="detail-log"></div>
+  </div>
+</div>
+
+<!-- ══ MUSIC WIDGET ══ -->
+<div class="widget from-right" id="w-music">
+  <div class="w-scan"></div>
+  <div class="w-header" onmousedown="dragStart(event,'w-music')">
+    <div class="w-header-dot"></div>
+    <div class="w-header-label">Spotify_002</div>
+    <div class="w-close" onclick="closeWidget('w-music')">✕</div>
+  </div>
+  <div class="music-body">
+    <div class="album-art"><div class="album-art-inner">🎵</div></div>
+    <div class="music-info">
+      <div class="track-title">Still Into You</div>
+      <div class="track-artist">Paramore</div>
+      <div class="progress-wrap">
+        <span class="progress-time">2:04</span>
+        <div class="progress-bar" id="progBar" onclick="scrub(event)">
+          <div class="progress-fill" id="progFill"></div>
+        </div>
+        <span class="progress-time">3:36</span>
+      </div>
+      <div class="music-controls">
+        <div class="ctrl-btn" onclick="prevTrack()">⏮</div>
+        <div class="ctrl-btn play" id="playBtn" onclick="togglePlay()">▶</div>
+        <div class="ctrl-btn" onclick="nextTrack()">⏭</div>
+        <div class="ctrl-btn" id="shuffleBtn" onclick="toggleShuffle()">⇄</div>
+        <div class="idle-badge" id="playStatus">IDLE</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CHAT WIDGET ══ -->
+<div class="widget" id="w-chat">
+  <div class="w-scan"></div>
+  <div class="w-header" onmousedown="dragStart(event,'w-chat')">
+    <div class="w-header-dot"></div>
+    <div class="w-header-label">grace_Sir_Protocol</div>
+    <div class="w-close" onclick="closeWidget('w-chat')">✕</div>
+  </div>
+  <div class="chat-body" id="chatBody"></div>
+  <div id="chat-attachment-bar" style="display:none">
+    <div class="chat-attachment">
+      <div class="chat-attachment-dot"></div>
+      <div class="chat-attachment-name" id="chat-attachment-name">—</div>
+      <div class="chat-attachment-clear" onclick="uploadClearFile()" title="Detach file">✕</div>
+    </div>
+  </div>
+  <div class="chat-input-wrap">
+    <div class="img-btn">[+ img]</div>
+    <span style="font-size:11px;color:rgba(255,255,255,0.4);flex-shrink:0">›</span>
+    <input class="chat-input" id="chatIn" placeholder="enter message..." onkeydown="sendMsg(event)"/>
+    <div class="chat-send" onclick="sendFromBtn()">[send ↵]</div>
+  </div>
+</div>
+
+<!-- ══ SYSTEM STATS WIDGET ══ -->
+<div class="widget from-right" id="w-sys">
+  <div class="w-scan"></div>
+  <div class="w-header" onmousedown="dragStart(event,'w-sys')">
+    <div class="w-header-dot"></div>
+    <div class="w-header-label">Sys_Monitor_001</div>
+    <div class="w-close" onclick="closeWidget('w-sys')">✕</div>
+  </div>
+  <div class="sys-body">
+    <div>
+      <div class="sys-row"><span class="sys-label">CPU Usage</span><span class="sys-val" id="cpuVal">8%</span></div>
+      <div class="bar-track"><div class="bar-fill" id="cpuBar" style="width:8%"></div></div>
+    </div>
+    <div>
+      <div class="sys-row"><span class="sys-label">RAM Usage</span><span class="sys-val" id="ramVal">44%</span></div>
+      <div class="bar-track"><div class="bar-fill" id="ramBar" style="width:44%"></div></div>
+    </div>
+    <div>
+      <div class="sys-row"><span class="sys-label">Disk Usage</span><span class="sys-val warn" id="diskVal">92%</span></div>
+      <div class="bar-track"><div class="bar-fill warn" id="diskBar" style="width:92%"></div></div>
+    </div>
+    <div class="sys-grid">
+      <div class="sys-chip"><span class="sys-chip-val" id="coreTemp">61°C</span><span class="sys-chip-lbl">CPU Temp</span></div>
+      <div class="sys-chip"><span class="sys-chip-val" id="uptime">00:07:19</span><span class="sys-chip-lbl">Uptime</span></div>
+      <div class="sys-chip"><span class="sys-chip-val" id="processes">142</span><span class="sys-chip-lbl">Processes</span></div>
+    </div>
+    <div class="sys-status"><div class="status-led"></div>All systems nominal · Load: moderate</div>
+  </div>
+</div>
+
+<!-- ══ WEATHER WIDGET ══ -->
+<div class="widget" id="w-weather">
+  <div class="w-scan"></div>
+  <div class="w-header" onmousedown="dragStart(event,'w-weather')">
+    <div class="w-header-dot"></div>
+    <div class="w-header-label">Weather_003</div>
+    <div class="w-close" onclick="closeWidget('w-weather')">✕</div>
+  </div>
+  <div class="weather-body">
+    <div class="weather-main">
+      <div>
+        <div class="weather-temp">25<sup>°C</sup></div>
+        <div class="weather-loc">Quezon City, PH</div>
+      </div>
+      <div class="weather-right">
+        <div class="weather-icon">⛅</div>
+        <div class="weather-desc">Overcast</div>
+      </div>
+    </div>
+    <div class="weather-divider"></div>
+    <div class="weather-grid">
+      <div class="w-stat"><span class="w-stat-val">94%</span><span class="w-stat-lbl">Humidity</span></div>
+      <div class="w-stat"><span class="w-stat-val">5.8</span><span class="w-stat-lbl">Wind m/s</span></div>
+      <div class="w-stat"><span class="w-stat-val">26°</span><span class="w-stat-lbl">Feels like</span></div>
+    </div>
+    <div class="weather-forecast">
+      <div class="fc-day"><div class="fc-day-name">MON</div><div class="fc-icon">🌤️</div><div class="fc-temp">27°</div></div>
+      <div class="fc-day"><div class="fc-day-name">TUE</div><div class="fc-icon">🌧️</div><div class="fc-temp">23°</div></div>
+      <div class="fc-day"><div class="fc-day-name">WED</div><div class="fc-icon">⛅</div><div class="fc-temp">25°</div></div>
+      <div class="fc-day"><div class="fc-day-name">THU</div><div class="fc-icon">☀️</div><div class="fc-temp">29°</div></div>
+      <div class="fc-day"><div class="fc-day-name">FRI</div><div class="fc-icon">🌦️</div><div class="fc-temp">24°</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ NEW TASK MODAL ══ -->
+<div class="kanban-modal-backdrop" id="newTaskModal">
+  <div class="kanban-modal">
+    <div class="modal-title">── New Mission Task ──</div>
+    <div class="modal-field">
+      <label class="modal-label">Task Title</label>
+      <input class="modal-input" id="modal-title" placeholder="Enter task name...">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Description</label>
+      <input class="modal-input" id="modal-desc" placeholder="Brief description...">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Priority</label>
+      <select class="modal-select" id="modal-priority">
+        <option value="high">High</option>
+        <option value="med" selected>Medium</option>
+        <option value="low">Low</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Tag</label>
+      <input class="modal-input" id="modal-tag" placeholder="e.g. DEV, DESIGN, OPS...">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Column</label>
+      <select class="modal-select" id="modal-col">
+        <option value="todo">To Do</option>
+        <option value="inprog">In Progress</option>
+        <option value="done">Done</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <div class="modal-btn" onclick="closeNewTaskModal()">Cancel</div>
+      <div class="modal-btn primary" onclick="submitNewTask()">[ Create Task ]</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CODE PANEL ══ -->
+<div id="w-code">
+  <!-- Top HUD -->
+  <div class="code-hud">
+    <div class="code-hud-dot"></div>
+    <div class="code-hud-title">Code_Panel</div>
+    <div class="code-hud-div"></div>
+    <div class="code-hud-stat">LANG: <span id="code-hud-lang">—</span></div>
+    <div class="code-hud-div"></div>
+    <div class="code-hud-stat">LINE: <span id="code-hud-line">1</span></div>
+    <div class="code-hud-div"></div>
+    <div class="code-hud-stat">COL: <span id="code-hud-col">1</span></div>
+    <div class="code-hud-div"></div>
+    <div class="code-hud-stat">TABS: <span id="code-hud-tabs">0</span></div>
+  </div>
+  <!-- Top-right controls -->
+  <div class="code-controls">
+    <div class="code-ctrl-btn" onclick="codeNewTab()">[ + New Tab ]</div>
+    <div class="code-hud-div"></div>
+    <div class="code-ctrl-btn" onclick="codeCopyActive()">[ Copy ]</div>
+    <div class="code-ctrl-btn" onclick="codeFormatActive()">[ Format ]</div>
+    <div class="code-ctrl-btn ask" onclick="codeAskGrace()">[ Ask GRACE ]</div>
+    <div class="code-hud-div"></div>
+    <div class="code-close-btn" onclick="closeWidget('w-code')">×</div>
+  </div>
+  <!-- Main editor area -->
+  <div class="code-main">
+    <!-- Tab bar -->
+    <div class="code-tab-bar" id="code-tab-bar">
+      <div class="code-tab-add" onclick="codeNewTab()" title="New tab">+</div>
+    </div>
+    <!-- Editor instances -->
+    <div class="code-editors" id="code-editors"></div>
+    <!-- Terminal strip -->
+    <div class="code-terminal">
+      <div class="code-terminal-header">
+        <div class="code-terminal-dot"></div>
+        <div class="code-terminal-label">Grace Terminal</div>
+        <div class="code-terminal-clear" onclick="codeClearTerminal()">Clear</div>
+      </div>
+      <div class="code-terminal-output" id="code-terminal-output">
+        <div class="code-term-line sys">── terminal ready · awaiting input ──</div>
+      </div>
+      <div class="code-ask-row">
+        <span class="code-ask-prompt">G›</span>
+        <input class="code-ask-input" id="code-ask-input" placeholder="Ask GRACE about your code..." onkeydown="codeAskKeydown(event)">
+        <div class="code-ask-send" onclick="codeAskGrace()">Send ↵</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ FILE UPLOAD WIDGET ══ -->
+<div class="widget from-right" id="w-upload">
+  <div class="w-scan"></div>
+  <div class="w-header" onmousedown="dragStart(event,'w-upload')">
+    <div class="w-header-dot"></div>
+    <div class="w-header-label">File_Upload_006</div>
+    <div class="w-close" onclick="closeWidget('w-upload')">✕</div>
+  </div>
+  <div class="upload-body">
+    <!-- Drop zone -->
+    <div class="upload-zone" id="upload-zone"
+      onclick="document.getElementById('upload-file-input').click()"
+      ondragover="uploadDragOver(event)"
+      ondragleave="uploadDragLeave(event)"
+      ondrop="uploadDrop(event)">
+      <span class="upload-zone-icon">⬆</span>
+      <span class="upload-zone-label">Drop files or click to browse</span>
+      <span class="upload-zone-sub">Up to 6 files at once</span>
+    </div>
+    <input type="file" id="upload-file-input" multiple onchange="uploadFileSelected(event)">
+    <!-- Supported types -->
+    <div class="upload-types">
+      <div class="upload-type-badge">PDF</div>
+      <div class="upload-type-badge">TXT</div>
+      <div class="upload-type-badge">CSV</div>
+      <div class="upload-type-badge">JSON</div>
+      <div class="upload-type-badge">PNG</div>
+      <div class="upload-type-badge">JPG</div>
+      <div class="upload-type-badge">MD</div>
+    </div>
+    <!-- File list -->
+    <div class="upload-file-list" id="upload-file-list"></div>
+  </div>
+</div>
+
+<!-- ══ CALENDAR WIDGET ══ -->
+<div class="widget" id="w-calendar">
+  <div class="w-scan"></div>
+  <div class="w-header" onmousedown="dragStart(event,'w-calendar')">
+    <div class="w-header-dot"></div>
+    <div class="w-header-label">Chrono_005</div>
+    <div class="w-close" onclick="closeWidget('w-calendar')">✕</div>
+  </div>
+  <div class="cal-body">
+    <!-- Live clock -->
+    <div class="cal-clock-row">
+      <div>
+        <span class="cal-clock" id="cal-hhmm">00:00</span><span class="cal-clock-secs" id="cal-ss">:00</span>
+      </div>
+      <div class="cal-date-label" id="cal-date-label">—</div>
+    </div>
+    <!-- Month nav -->
+    <div class="cal-nav">
+      <div class="cal-nav-btn" onclick="calPrevMonth()">‹</div>
+      <div class="cal-month-label" id="cal-month-label">— ————</div>
+      <div class="cal-nav-btn" onclick="calNextMonth()">›</div>
+    </div>
+    <!-- Day-of-week headers -->
+    <div class="cal-dow-row">
+      <div class="cal-dow">SUN</div><div class="cal-dow">MON</div><div class="cal-dow">TUE</div>
+      <div class="cal-dow">WED</div><div class="cal-dow">THU</div><div class="cal-dow">FRI</div>
+      <div class="cal-dow">SAT</div>
+    </div>
+    <!-- Day grid -->
+    <div class="cal-grid" id="cal-grid"></div>
+    <!-- Selected day events panel -->
+    <div class="cal-events-panel">
+      <div class="cal-events-date" id="cal-events-date">SELECT A DATE</div>
+      <div class="cal-events-list" id="cal-events-list">
+        <div class="cal-no-events">No date selected</div>
+      </div>
+    </div>
+    <!-- Quick add -->
+    <div class="cal-add-row">
+      <input class="cal-add-input" id="cal-add-title" placeholder="Add event for selected date..." onkeydown="calAddEvent(event)">
+      <input class="cal-add-time"  id="cal-add-time"  placeholder="09:00" onkeydown="calAddEvent(event)">
+      <div class="cal-add-btn" onclick="calAddEventBtn()">+</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PROJECTS / MOMENTUM ══ -->
+<div class="widget" id="w-projects">
+  <div class="w-scan"></div>
+  <div class="w-header" onmousedown="dragStart(event,'w-projects')">
+    <div class="w-header-dot"></div>
+    <div class="w-header-label">Momentum_006</div>
+    <div class="w-close" onclick="closeWidget('w-projects')">✕</div>
+  </div>
+  <div class="proj-body">
+    <div class="proj-statbar" id="proj-statbar"></div>
+    <div class="proj-list" id="proj-list">
+      <div class="proj-empty">No projects tracked yet.</div>
+    </div>
+    <div class="proj-add-row">
+      <input class="proj-add-input" id="proj-add-name" placeholder="Track a new project..." onkeydown="projAddKey(event)">
+      <div class="proj-add-btn" onclick="projAdd()">+</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ HABITS & STREAKS ══ -->
+<div class="widget" id="w-habits">
+  <div class="w-scan"></div>
+  <div class="w-header" onmousedown="dragStart(event,'w-habits')">
+    <div class="w-header-dot"></div>
+    <div class="w-header-label">Habits_008</div>
+    <div class="w-close" onclick="closeWidget('w-habits')">✕</div>
+  </div>
+  <div class="hab-body">
+    <div class="hab-statbar" id="hab-statbar"></div>
+    <div class="hab-list" id="hab-list">
+      <div class="hab-empty">No habits yet.</div>
+    </div>
+    <div class="hab-add-row">
+      <input class="hab-add-input" id="hab-add-name" placeholder="Add a daily habit..." onkeydown="habAddKey(event)">
+      <div class="hab-add-btn" onclick="habAdd()">+</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DIRECTIONS CARD (pops with the map, draggable widget) ══ -->
+<div class="widget" id="directions-card">
+  <div class="w-scan"></div>
+  <div class="w-header" onmousedown="dragStart(event,'directions-card')">
+    <div class="w-header-dot"></div>
+    <div class="w-header-label">Route_007</div>
+    <div class="w-close" onclick="hideDirectionsCard()">✕</div>
+  </div>
+  <div class="dc-body">
+    <div class="dc-route">
+      <div class="dc-pt"><span class="dc-pin start"></span><span id="dc-origin">—</span></div>
+      <div class="dc-connector"></div>
+      <div class="dc-pt"><span class="dc-pin end"></span><span id="dc-dest">—</span></div>
+    </div>
+    <div class="dc-stats">
+      <div class="dc-stat"><b id="dc-eta">—</b><span>ETA · with traffic</span></div>
+      <div class="dc-stat"><b id="dc-dist">—</b><span>Distance</span></div>
+    </div>
+    <div class="dc-traffic" id="dc-traffic">—</div>
+    <div class="dc-leave" id="dc-leave" style="display:none"></div>
+    <div class="dc-alts" id="dc-alts"></div>
+  </div>
+</div>
+
+<!-- ══ DOCUMENT EDITOR (opens with an uploaded .txt/.docx, draggable widget) ══ -->
+<div class="widget" id="w-doc">
+  <div class="w-scan"></div>
+  <div class="w-header" onmousedown="dragStart(event,'w-doc')">
+    <div class="w-header-dot"></div>
+    <div class="w-header-label">Doc · <span id="doc-name">untitled</span></div>
+    <div class="w-close" onclick="closeWidget('w-doc')">✕</div>
+  </div>
+  <div class="doc-body">
+    <textarea id="doc-editor" class="doc-editor" spellcheck="true"
+              placeholder="Upload a .txt or .docx, or type here… then tell Grace what to change."
+              oninput="docOnInput()"></textarea>
+    <div class="doc-foot">
+      <span class="doc-meta"><span id="doc-words">0</span> words · <span id="doc-fmt">txt</span></span>
+      <span class="doc-save-state" id="doc-save-state"></span>
+      <span class="doc-dl-btn" onclick="docDownloadCurrent()">⭳ Download</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ "DOCUMENT READY" TOAST (top, matches dashboard chrome) ══ -->
+<div id="doc-toast">
+  <div class="dt-icon">📄</div>
+  <div class="dt-text">
+    <div class="dt-title">Document ready</div>
+    <div class="dt-file" id="doc-toast-file">document.txt</div>
+  </div>
+  <a class="dt-dl" id="doc-toast-dl" href="#" download>⭳ Download</a>
+  <div class="dt-close" onclick="hideDocToast()">✕</div>
+</div>
+
+<!-- ══ CODE DIFF / APPROVE MODAL ══ -->
+<div id="code-diff-modal">
+  <div class="diff-panel">
+    <div class="diff-head">
+      <div class="diff-dot"></div>
+      <div class="diff-title">Proposed change · <span id="diff-file">file</span></div>
+      <div class="diff-close" onclick="rejectCodeEdit()">✕</div>
+    </div>
+    <div class="diff-summary" id="diff-summary"></div>
+    <div class="diff-body" id="diff-body"></div>
+    <div class="diff-actions">
+      <div class="diff-note">Nothing is written until you Apply. The original is backed up.</div>
+      <div class="diff-btn reject" onclick="rejectCodeEdit()">Reject</div>
+      <div class="diff-btn apply" onclick="applyCodeEdit()">✓ Apply</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ EMAIL APPROVAL CARD (review + send, human-in-the-loop) ══ -->
+<div id="email-approve-modal">
+  <div class="email-panel">
+    <div class="email-head">
+      <div class="email-dot"></div>
+      <div class="email-title">✉ Review &amp; Send</div>
+      <div class="email-close" onclick="discardEmailDraft()">✕</div>
+    </div>
+    <div class="email-fields">
+      <label class="email-label">To</label>
+      <input id="email-to" class="email-input" type="text" spellcheck="false">
+      <label class="email-label">Subject</label>
+      <input id="email-subject" class="email-input" type="text">
+      <label class="email-label">Message</label>
+      <textarea id="email-body" class="email-textarea" spellcheck="true"></textarea>
+      <div id="email-attach" class="email-attach" style="display:none;"></div>
+    </div>
+    <div class="email-actions">
+      <div class="email-note" id="email-note">Nothing sends until you click Send — edit above if needed.</div>
+      <div class="email-btn discard" onclick="discardEmailDraft()">Discard</div>
+      <div class="email-btn send" onclick="sendEmailDraft()">➤ Send</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ICON BAR ══ -->
+<div class="icon-bar">
+  <div class="icon-btn" onclick="toggleVoice()" id="btn-voice">
+  <div class="tooltip">Voice Command</div>
+  <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+    <line x1="12" y1="19" x2="12" y2="23"/>
+    <line x1="8" y1="23" x2="16" y2="23"/>
+  </svg>
+</div>
+  <div class="icon-btn" onclick="toggleWidget('w-sys')" id="btn-sys">
+    <div class="tooltip">System</div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+      <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+    </svg>
+  </div>
+  <div class="icon-btn" onclick="toggleWidget('w-chat')" id="btn-chat">
+    <div class="tooltip">Chat</div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+  </div>
+  <div class="icon-btn" onclick="toggleWidget('w-music')" id="btn-music">
+    <div class="tooltip">Music</div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+      <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+    </svg>
+  </div>
+  <div class="icon-btn" onclick="toggleWidget('w-weather')" id="btn-weather">
+    <div class="tooltip">Weather</div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+      <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+    </svg>
+  </div>
+  <div class="icon-btn" onclick="toggleWidget('w-kanban')" id="btn-kanban">
+    <div class="tooltip">Task</div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+      <rect x="3" y="3" width="5" height="18" rx="1"/>
+      <rect x="10" y="3" width="5" height="12" rx="1"/>
+      <rect x="17" y="3" width="5" height="15" rx="1"/>
+    </svg>
+  </div>
+  <div class="icon-btn" onclick="toggleWidget('w-code')" id="btn-code">
+    <div class="tooltip">Code Panel</div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+      <polyline points="16 18 22 12 16 6"/>
+      <polyline points="8 6 2 12 8 18"/>
+    </svg>
+  </div>
+  <div class="icon-btn" onclick="toggleWidget('w-upload')" id="btn-upload">
+    <div class="tooltip">File Upload</div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/>
+      <line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+  </div>
+  <div class="icon-btn" onclick="toggleWidget('w-calendar')" id="btn-calendar">
+    <div class="tooltip">Calendar</div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+      <rect x="3" y="4" width="18" height="18" rx="2"/>
+      <path d="M16 2v4M8 2v4M3 10h18"/>
+      <rect x="7" y="14" width="3" height="3" rx="0.5"/>
+    </svg>
+  </div>
+  <div class="icon-btn" onclick="toggleWidget('w-projects')" id="btn-projects">
+    <div class="tooltip">Projects</div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+      <path d="M13 2L3 14h7l-1 8 10-12h-7z"/>
+    </svg>
+  </div>
+  <div class="icon-btn" onclick="toggleWidget('w-habits')" id="btn-habits">
+    <div class="tooltip">Habits</div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3c1.8 3.2 4.5 4.7 4.5 8.2A4.5 4.5 0 0 1 12 15.7a4.5 4.5 0 0 1-4.5-4.5C7.5 7.7 10.2 6.2 12 3z"/>
+      <path d="M9 20.5h6"/>
+    </svg>
+  </div>
+  <div class="icon-btn" onclick="toggleWidget('w-map')" id="btn-map">
+    <div class="tooltip">Tactical Map</div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+      <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
+    </svg>
+  </div>
+</div>
+<div style="position:fixed;bottom:7px;left:50%;transform:translateX(-50%);z-index:20">
+  <div class="dot-nav"><span class="on"></span><span></span><span></span></div>
+</div>
+
+<script>
+   
+// Configuration - API base URL (auto-detect if not set)
+const API_BASE = (typeof GRACE_API_BASE !== 'undefined') ? GRACE_API_BASE : 
+  (window.location.origin.includes('127.0.0.1') || window.location.origin.includes('localhost')) 
+    ? 'http://127.0.0.1:8000' 
+    : window.location.origin;
+
+/* ═══════════════════════════════════════════════════════════
+   SECTION 1 — WIDGET OPEN / CLOSE SYSTEM
+   ════════════════════════════════════════════════════════════ */
+
+
+
+function toggleWidget(id) {
+  const el  = document.getElementById(id);
+  const btn = document.getElementById('btn-' + id.replace('w-', ''));
+  if (!el) return;
+
+  // If mid-close animation, do nothing — let it finish
+  if (el.classList.contains('closing')) return;
+
+  const isHidden = el.style.display === 'none' || el.style.display === '';
+
+  if (isHidden) {
+    // — OPEN —
+    el.style.display = 'block';
+    el.classList.remove('closing');
+    // Force reflow so animation re-triggers cleanly
+    el.style.animation = 'none';
+    el.offsetHeight;
+    el.style.animation = '';
+    if (btn) btn.classList.add('active');
+
+    if (id === 'w-map') {
+      document.body.classList.add('map-active');
+      if (window._leafletMap) setTimeout(() => window._leafletMap.invalidateSize(), 50);
+    }
+    if (id === 'w-kanban') {
+      document.body.classList.add('kanban-active');
+      loadTasksFromBackend();
+    }
+    if (id === 'w-calendar') {
+      calLoadFromBackend();
+    }
+    if (id === 'w-weather') {
+      loadWeather();
+    }
+    if (id === 'w-projects') {
+      loadProjects();
+    }
+    if (id === 'w-habits') {
+      loadHabits();
+    }
+    if (id === 'w-code') {
+      document.body.classList.add('kanban-active');
+      setTimeout(() => codeRefreshActive(), 100);
+    }
+  } else {
+    // — CLOSE —
+    closeWidget(id);
+  }
+}
+
+function closeWidget(id) {
+  const el  = document.getElementById(id);
+  const btn = document.getElementById('btn-' + id.replace('w-', ''));
+
+  if (btn) btn.classList.remove('active');
+  if (!el || el.classList.contains('closing')) return;
+
+  el.classList.add('closing');
+
+  // Fullscreen special cases
+  if (id === 'w-map')    document.body.classList.remove('map-active');
+  if (id === 'w-kanban') {
+    document.body.classList.remove('kanban-active');
+    // Close detail if open when board closes
+    const det = document.getElementById('w-task-detail');
+    if (det && det.style.display !== 'none') closeWidget('w-task-detail');
+  }
+  if (id === 'w-code') document.body.classList.remove('kanban-active');
+
+  // Close detail backdrop together with detail widget
+  if (id === 'w-task-detail') {
+    const bd = document.getElementById('detail-backdrop');
+    bd.classList.add('closing');
+    bd.addEventListener('animationend', function h(e) {
+      if (e.target !== bd) return;
+      bd.style.display = 'none';
+      bd.classList.remove('closing');
+      bd.removeEventListener('animationend', h);
+    });
+  }
+
+  // Wait for animation to finish, then hide
+  // Guard e.target === el so child animationend events don't fire this early
+  el.addEventListener('animationend', function handler(e) {
+    if (e.target !== el) return;
+    el.style.display = 'none';
+    el.classList.remove('closing');
+    el.removeEventListener('animationend', handler);
+  });
+}
+
+// Close every open panel (leaves chat up so the conversation stays visible).
+function closeAllWidgets() {
+  ['w-map','w-kanban','w-task-detail','w-music','w-sys','w-weather','w-calendar','w-upload','w-code','w-projects','directions-card','w-doc','w-habits']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.style.display && el.style.display !== 'none') closeWidget(id);
+    });
+}
+
+/* ════════════════════════════════════════════════════════════
+   SECTION 2 — ORB TICKS
+   ════════════════════════════════════════════════════════════ */
+
+(function buildOrbTicks() {
+  const tg = document.getElementById('ticks');
+  for (let i = 0; i < 60; i++) {
+    const a = (i / 60) * 2 * Math.PI - Math.PI / 2;
+    const maj = i % 5 === 0, r = 72, len = maj ? 6 : 3;
+    const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    l.setAttribute('x1', (100 + r * Math.cos(a)).toFixed(2));
+    l.setAttribute('y1', (100 + r * Math.sin(a)).toFixed(2));
+    l.setAttribute('x2', (100 + (r + len) * Math.cos(a)).toFixed(2));
+    l.setAttribute('y2', (100 + (r + len) * Math.sin(a)).toFixed(2));
+    l.setAttribute('stroke', 'rgba(255,255,255,0.4)');
+    l.setAttribute('stroke-width', maj ? '1.2' : '0.6');
+    tg.appendChild(l);
+  }
+})();
+
+/* ════════════════════════════════════════════════════════════
+   SECTION 3 — WIDGET DRAG (mouse)
+   ════════════════════════════════════════════════════════════ */
+
+let _dragging = null, _ox = 0, _oy = 0;
+
+function dragStart(e, id) {
+  _dragging = id; _ox = e.clientX; _oy = e.clientY;
+  const el = document.getElementById(id);
+  const r  = el.getBoundingClientRect();
+  el._dx = r.left; el._dy = r.top;
+  el.style.transition = 'none';
+}
+document.addEventListener('mousemove', e => {
+  if (!_dragging) return;
+  const el = document.getElementById(_dragging);
+  el.style.left   = (el._dx + e.clientX - _ox) + 'px';
+  el.style.top    = (el._dy + e.clientY - _oy) + 'px';
+  el.style.right  = 'auto';
+  el.style.bottom = 'auto';
+});
+document.addEventListener('mouseup', () => { _dragging = null; });
+
+/* ════════════════════════════════════════════════════════════
+   SECTION 4 — KANBAN DATA & RENDERING
+   ════════════════════════════════════════════════════════════ */
+
+let taskIdCounter = 10;
+let tasks = {
+  todo: [
+    { id:'t1', apiId: null, title:'Wire Electron wrapper',         priority:'med',  tag:'DEV',   due:'DUE: JUN 12', desc:'Package the grace web app into an Electron desktop wrapper with proper IPC channels.',                             checklist:['Set up electron-builder','Configure main process','Test IPC events'],                    progress:20  },
+    { id:'t2', apiId: null, title:'Add voice wake word detection', priority:'high', tag:'AI',    due:'DUE: JUN 15', desc:'Integrate a lightweight wake-word model (e.g. Picovoice Porcupine) for hands-free activation.',                    checklist:['Research Porcupine API','Integrate SDK','Test accuracy','Handle false positives'],           progress:0   },
+    { id:'t3', apiId: null, title:'Implement dark mode themes',    priority:'low',  tag:'UI',    due:'DUE: JUN 20', desc:'Add theme toggle with at least three colour palettes: default white, cyan tactical, and amber ops.',               checklist:['Design palette tokens','Build theme switcher'],                                           progress:10  },
+  ],
+  inprog: [
+    { id:'t4', apiId: null, title:'Finish grace widget system',   priority:'high', tag:'DEV',   due:'DUE: JUN 10', desc:'Complete all planned widgets: map, kanban, weather, music, chat, and system monitor.',                             checklist:['Map widget','Chat widget','Music widget','Board','System monitor'],                   progress:75  },
+    { id:'t5', apiId: null, title:'StreamTogether MKV support',    priority:'med',  tag:'VIDEO', due:'DUE: JUN 14', desc:'Investigate and implement browser-side MKV playback using a transcoding or remux approach.',                       checklist:['Research ffmpeg.wasm','Test remux pipeline','Handle subtitle tracks'],                       progress:40  },
+  ],
+  done: [
+    { id:'t6', apiId: null, title:'Design orb UI',                 priority:'low',  tag:'UI',    due:'DONE',        desc:'Created the central grace orb with pulsating ring animations, tick marks, and glowing label.',                    checklist:['SVG ring design','Pulse animation','Label glow effect'],                                   progress:100 },
+    { id:'t7', apiId: null, title:'Build border frame system',     priority:'med',  tag:'UI',    due:'DONE',        desc:'Implemented the notched-corner glowing border frame that wraps the entire grace interface.',                       checklist:['Clip-path notch','Pulse keyframe','Glow box-shadow'],                                      progress:100 },
+  ]
+};
+
+function _apiTaskToCard(row) {
+  return {
+    id: 'api' + row.id, apiId: row.id, title: row.title,
+    priority: 'med', tag: 'API', due: '—', desc: '',
+    checklist: ['Complete task'],
+    progress: row.status === 'done' ? 100 : 0,
+    _checked: [row.status === 'done']
+  };
+}
+
+// ── Weather ────────────────────────────────────────────────────────────────
+// Paint the weather widget from a backend payload (live Open-Meteo data).
+function renderWeather(d) {
+  if (!d || d.error) return;
+  const set = (sel, val) => { const el = document.querySelector(sel); if (el && val !== undefined && val !== null) el.textContent = val; };
+
+  const tempEl = document.querySelector('.weather-temp');
+  if (tempEl && d.temp_c !== undefined) tempEl.innerHTML = `${d.temp_c}<sup>°C</sup>`;
+  set('.weather-loc', d.location);
+  set('.weather-icon', d.icon);
+  if (d.condition) set('.weather-desc', d.condition);
+
+  const stats = document.querySelectorAll('.weather-grid .w-stat .w-stat-val');
+  if (stats.length >= 3) {
+    if (d.humidity   !== undefined) stats[0].textContent = `${d.humidity}%`;
+    if (d.wind       !== undefined) stats[1].textContent = d.wind;
+    if (d.feels_like !== undefined) stats[2].textContent = `${d.feels_like}°`;
+  }
+
+  if (Array.isArray(d.forecast)) {
+    const days = document.querySelectorAll('.weather-forecast .fc-day');
+    d.forecast.forEach((f, i) => {
+      if (i >= days.length) return;
+      const n = days[i].querySelector('.fc-day-name');
+      const ic = days[i].querySelector('.fc-icon');
+      const tp = days[i].querySelector('.fc-temp');
+      if (n && f.day) n.textContent = f.day;
+      if (ic && f.icon) ic.textContent = f.icon;
+      if (tp && f.temp !== undefined) tp.textContent = `${f.temp}°`;
+    });
+  }
+}
+
+async function loadWeather() {
+  try {
+    const res = await fetch(`${API_BASE}/api/weather/`);
+    const data = await res.json();
+    renderWeather(data);
+  } catch (err) {
+    console.warn('[weather] fetch failed', err);
+  }
+}
+
+// ── Projects / Momentum ─────────────────────────────────────────────────────
+function _esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function renderProjects(list) {
+  const wrap = document.getElementById('proj-list');
+  const statbar = document.getElementById('proj-statbar');
+  if (!wrap) return;
+  list = Array.isArray(list) ? list : [];
+
+  const stalling = list.filter(p => p.stalling).length;
+  const onTrack = list.length - stalling;
+  if (statbar) {
+    statbar.innerHTML = `
+      <div class="proj-stat"><span class="proj-stat-val">${list.length}</span><span class="proj-stat-lbl">Active</span></div>
+      <div class="proj-stat${onTrack > 0 ? ' good' : ''}"><span class="proj-stat-val">${onTrack}</span><span class="proj-stat-lbl">On Track</span></div>
+      <div class="proj-stat${stalling > 0 ? ' crit' : ''}"><span class="proj-stat-val">${stalling}</span><span class="proj-stat-lbl">Stalling</span></div>`;
+  }
+
+  if (!list.length) {
+    wrap.innerHTML = '<div class="proj-empty">No projects tracked yet.<br><span>Tell Grace what you\'re building.</span></div>';
+    return;
+  }
+
+  wrap.innerHTML = list.map(p => {
+    const d = p.days_since_progress;
+    const dLabel = d === 0 ? 'moved today' : (d === 1 ? '1 day idle' : `${d} days idle`);
+    // Momentum meter: full & bright when fresh, depleting and reddening as it
+    // stalls. Uses a 6-day runway so the decay is visible.
+    const pct = Math.max(4, Math.min(100, Math.round(100 - (d / 6) * 100)));
+    let tier = 'hi';
+    if (p.stalling || pct <= 20) tier = 'crit';
+    else if (pct <= 55) tier = 'warn';
+
+    const tags = [];
+    if (p.stall_risk) tags.push('<span class="proj-tag backend">BACKEND</span>');
+    if (p.stalling)   tags.push('<span class="proj-tag stall">STALLING</span>');
+    const next = p.next_action
+      ? `<div class="proj-next"><span class="proj-next-key">NEXT</span>${_esc(p.next_action)}</div>` : '';
+
+    return `
+      <div class="proj-card tier-${tier}">
+        <div class="proj-card-top">
+          <div class="proj-name">${_esc(p.name)}</div>
+          <div class="proj-tags">${tags.join('')}</div>
+        </div>
+        <div class="proj-meter">
+          <div class="proj-meter-track"><div class="proj-meter-fill ${tier}" style="width:${pct}%"></div></div>
+          <div class="proj-meter-label">${dLabel}</div>
+        </div>
+        ${next}
+        <div class="proj-card-foot">
+          <div class="proj-btn primary" title="Log progress — reset the clock" onclick="projLogProgress(${p.id})">✓&nbsp;Progress</div>
+          <div class="proj-btn" title="Mark done" onclick="projMarkDone(${p.id})">Done</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function loadProjects() {
+  try {
+    const res = await fetch(`${API_BASE}/api/projects/`);
+    renderProjects(await res.json());
+  } catch (err) {
+    console.warn('[projects] fetch failed', err);
+  }
+}
+
+async function projLogProgress(id) {
+  try {
+    await fetch(`${API_BASE}/api/projects/${id}/progress`, { method: 'POST' });
+    loadProjects();
+  } catch (err) { console.warn('[projects] progress failed', err); }
+}
+
+async function projMarkDone(id) {
+  try {
+    await fetch(`${API_BASE}/api/projects/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    });
+    loadProjects();
+  } catch (err) { console.warn('[projects] done failed', err); }
+}
+
+async function projAdd() {
+  const input = document.getElementById('proj-add-name');
+  const name = (input && input.value || '').trim();
+  if (!name) return;
+  try {
+    await fetch(`${API_BASE}/api/projects/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (input) input.value = '';
+    loadProjects();
+  } catch (err) { console.warn('[projects] add failed', err); }
+}
+
+function projAddKey(e) {
+  if (e.key === 'Enter') { e.preventDefault(); projAdd(); }
+}
+
+/* ════════════════════════════════════════════════════════════
+   HABITS & STREAKS
+   ════════════════════════════════════════════════════════════ */
+function renderHabits(list) {
+  const wrap = document.getElementById('hab-list');
+  const statbar = document.getElementById('hab-statbar');
+  if (!wrap) return;
+  list = Array.isArray(list) ? list : [];
+
+  const doneToday = list.filter(h => h.done_today).length;
+  const best = list.reduce((m, h) => Math.max(m, h.longest_streak || 0), 0);
+  if (statbar) {
+    statbar.innerHTML = `
+      <div class="hab-stat"><span class="hab-stat-val">${list.length}</span><span class="hab-stat-lbl">Habits</span></div>
+      <div class="hab-stat${doneToday > 0 ? ' good' : ''}"><span class="hab-stat-val">${doneToday}/${list.length}</span><span class="hab-stat-lbl">Today</span></div>
+      <div class="hab-stat${best > 0 ? ' fire' : ''}"><span class="hab-stat-val">${best}</span><span class="hab-stat-lbl">Best 🔥</span></div>`;
+  }
+
+  if (!list.length) {
+    wrap.innerHTML = '<div class="hab-empty">No habits yet.<br><span>Add one below, or tell Grace.</span></div>';
+    return;
+  }
+
+  wrap.innerHTML = list.map(h => {
+    const s = h.current_streak || 0;
+    const flame = s > 0 ? `<span class="hab-streak on">🔥 ${s}</span>` : `<span class="hab-streak">— 0</span>`;
+    const icon = h.icon ? `<span class="hab-icon">${_esc(h.icon)}</span>` : '';
+    return `
+      <div class="hab-row ${h.done_today ? 'done' : ''}">
+        <div class="hab-check" title="${h.done_today ? 'Done today — click to undo' : 'Mark done today'}" onclick="habToggle(${h.id})">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+        <div class="hab-main">
+          <div class="hab-name">${icon}${_esc(h.name)}</div>
+          <div class="hab-sub">best ${h.longest_streak || 0}d · ${h.total_done || 0} total</div>
+        </div>
+        ${flame}
+        <div class="hab-del" title="Stop tracking" onclick="habDelete(${h.id}, '${_esc(h.name).replace(/'/g,"\\'")}')">✕</div>
+      </div>`;
+  }).join('');
+}
+
+async function loadHabits() {
+  try {
+    const res = await fetch(`${API_BASE}/api/habits/`);
+    renderHabits(await res.json());
+  } catch (err) { console.warn('[habits] fetch failed', err); }
+}
+
+async function habToggle(id) {
+  try {
+    await fetch(`${API_BASE}/api/habits/${id}/toggle`, { method: 'POST' });
+    loadHabits();
+  } catch (err) { console.warn('[habits] toggle failed', err); }
+}
+
+async function habAdd() {
+  const input = document.getElementById('hab-add-name');
+  const name = (input && input.value || '').trim();
+  if (!name) return;
+  try {
+    await fetch(`${API_BASE}/api/habits/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (input) input.value = '';
+    loadHabits();
+  } catch (err) { console.warn('[habits] add failed', err); }
+}
+
+async function habDelete(id, name) {
+  if (!confirm(`Stop tracking "${name}"? Its streak history will be cleared.`)) return;
+  try {
+    await fetch(`${API_BASE}/api/habits/${id}`, { method: 'DELETE' });
+    loadHabits();
+  } catch (err) { console.warn('[habits] delete failed', err); }
+}
+
+function habAddKey(e) {
+  if (e.key === 'Enter') { e.preventDefault(); habAdd(); }
+}
+
+async function loadTasksFromBackend() {
+  try {
+    const res = await fetch(`${API_BASE}/api/tasks/`);
+    const data = await res.json();
+    const rows = data.tasks || data;  // API returns {tasks:[...]} or bare array
+    tasks = { todo: [], inprog: [], done: [] };
+    rows.forEach(row => {
+      const col = tasks[row.status] ? row.status : 'todo';
+      const checklist = (Array.isArray(row.checklist) && row.checklist.length)
+        ? row.checklist : ['Complete task'];
+      const done = row.status === 'done';
+      // Prefer saved per-item state; fall back to column-derived state for
+      // legacy rows that predate checklist_done.
+      let checked;
+      if (Array.isArray(row.checklist_done) && row.checklist_done.length === checklist.length) {
+        checked = row.checklist_done.map(Boolean);
+      } else {
+        checked = checklist.map(() => done);
+      }
+      const progress = checklist.length
+        ? Math.round((checked.filter(Boolean).length / checklist.length) * 100)
+        : (done ? 100 : 0);
+      tasks[col].push({
+        id: 'api' + row.id,
+        apiId: row.id,
+        title: row.title,
+        priority: row.priority || 'med',
+        tag: row.tag || 'API',
+        due: 'SYNCED',
+        desc: row.description || '',
+        checklist: checklist,
+        progress: progress,
+        _checked: checked
+      });
+    });
+  } catch (err) {
+    addChatLine('sys', '── TASK BOARD: COULD NOT REACH BACKEND, USING LOCAL DATA ──');
+  }
+  renderKanban();
+}
+
+async function persistTaskStatus(apiId, newStatus) {
+  if (!apiId) return; // locally-created card, not yet synced
+  try {
+    await fetch(`${API_BASE}/api/tasks/${apiId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+  } catch (err) {
+    addChatLine('sys', '── TASK BOARD: STATUS CHANGE NOT SAVED ──');
+  }
+}
+
+async function persistChecklist(apiId, checkedArray) {
+  if (!apiId) return; // locally-created card, not yet synced
+  try {
+    await fetch(`${API_BASE}/api/tasks/${apiId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checklist_done: checkedArray })
+    });
+  } catch (err) {
+    addChatLine('sys', '── TASK BOARD: CHECKLIST NOT SAVED ──');
+  }
+}
+
+let draggedTaskId = null, draggedFromCol = null;
+let taskLogs = {};
+let currentDetailTaskId = null;
+
+async function deleteCurrentTask(e) {
+  if (e) e.stopPropagation();
+  const taskId = currentDetailTaskId;
+  const task = [...tasks.todo, ...tasks.inprog, ...tasks.done].find(t => t.id === taskId);
+  if (!task) return;
+  if (!confirm(`Delete task "${task.title}"? This cannot be undone.`)) return;
+
+  // Synced cards are removed on the backend; the SSE task_deleted packet will
+  // reload the board for every open tab. Locally-created cards (no apiId) are
+  // only in this tab's memory, so drop them directly.
+  if (task.apiId) {
+    try {
+      const res = await fetch(`${API_BASE}/api/tasks/${task.apiId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    } catch (err) {
+      addChatLine('sys', '── TASK BOARD: DELETE FAILED, TASK NOT REMOVED ──');
+      return;
+    }
+  } else {
+    ['todo','inprog','done'].forEach(col => {
+      tasks[col] = tasks[col].filter(t => t.id !== taskId);
+    });
+    renderKanban();
+  }
+
+  closeWidget('w-task-detail');
+  currentDetailTaskId = null;
+  addChatLine('sys', `── TASK DELETED: ${task.title} ──`);
+}
+
+function renderKanban() {
+  ['todo','inprog','done'].forEach(col => {
+    const container = document.getElementById('cards-' + col);
+    container.innerHTML = '';
+    tasks[col].forEach(task => container.appendChild(buildCard(task, col)));
+    document.getElementById('count-' + col).textContent = tasks[col].length;
+  });
+  updateKanbanStats();
+}
+
+function buildCard(task, col) {
+  const card = document.createElement('div');
+  card.className = 'k-card';
+  card.setAttribute('data-id', task.id);
+  card.setAttribute('data-col', col);
+  card.setAttribute('data-priority', task.priority);
+  card.draggable = true;
+
+  const accent = document.createElement('div');
+  accent.className = 'k-card-accent';
+
+  const top = document.createElement('div');
+  top.className = 'k-card-top';
+
+  const title = document.createElement('div');
+  title.className = 'k-card-title';
+  title.textContent = task.title;
+
+  const priority = document.createElement('div');
+  priority.className = 'k-card-priority';
+  priority.textContent = task.priority === 'high' ? 'High' : task.priority === 'med' ? 'Med' : 'Low';
+
+  top.appendChild(title);
+  top.appendChild(priority);
+
+  const meta = document.createElement('div');
+  meta.className = 'k-card-meta';
+
+  const tag = document.createElement('div');
+  tag.className = 'k-card-tag';
+  tag.textContent = task.tag;
+
+  const due = document.createElement('div');
+  due.className = 'k-card-due';
+  due.textContent = task.due;
+
+  meta.appendChild(tag);
+  meta.appendChild(due);
+
+  const progress = document.createElement('div');
+  progress.className = 'k-card-progress';
+
+  const progTrack = document.createElement('div');
+  progTrack.className = 'k-card-prog-track';
+
+  const progFill = document.createElement('div');
+  progFill.className = 'k-card-prog-fill';
+  progFill.style.width = task.progress + '%';
+
+  progTrack.appendChild(progFill);
+  progress.appendChild(progTrack);
+
+  const bottom = document.createElement('div');
+  bottom.className = 'k-card-bottom';
+
+  const idEl = document.createElement('div');
+  idEl.className = 'k-card-id';
+  idEl.textContent = '#' + task.id.toUpperCase();
+
+  const openBtn = document.createElement('div');
+  openBtn.className = 'k-card-open';
+  openBtn.textContent = 'Details ›';
+  openBtn.onclick = (e) => openTaskDetail(task.id, e);
+
+  bottom.appendChild(idEl);
+  bottom.appendChild(openBtn);
+
+  card.appendChild(accent);
+  card.appendChild(top);
+  card.appendChild(meta);
+  card.appendChild(progress);
+  card.appendChild(bottom);
+
+  card.addEventListener('dragstart', e => {
+    draggedTaskId = task.id; draggedFromCol = col;
+    setTimeout(() => card.classList.add('dragging'), 0);
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  card.addEventListener('dragend', () => {
+    card.classList.remove('dragging');
+    document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
+  });
+  return card;
+}
+
+function onDragOver(e)  { e.preventDefault(); e.dataTransfer.dropEffect='move'; e.currentTarget.classList.add('drag-over'); }
+function onDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+function onDrop(e, targetCol) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!draggedTaskId || draggedFromCol === targetCol) return;
+  const idx = tasks[draggedFromCol].findIndex(t => t.id === draggedTaskId);
+  if (idx === -1) return;
+  const [task] = tasks[draggedFromCol].splice(idx, 1);
+  if (targetCol === 'done') task.progress = 100;
+  if (targetCol === 'todo' && task.progress === 100) task.progress = 0;
+  tasks[targetCol].push(task);
+  persistTaskStatus(task.apiId, targetCol);
+  addLogEntry(task.id, `Moved to ${targetCol==='todo'?'To Do':targetCol==='inprog'?'In Progress':'Done'}`);
+  renderKanban();
+  draggedTaskId = null; draggedFromCol = null;
+}
+
+function updateKanbanStats() {
+  const all   = [...tasks.todo, ...tasks.inprog, ...tasks.done];
+  document.getElementById('kb-total').textContent  = all.length;
+  document.getElementById('kb-active').textContent = tasks.inprog.length;
+  document.getElementById('kb-done').textContent   = tasks.done.length;
+  document.getElementById('kb-high').textContent   = all.filter(t => t.priority === 'high').length;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SECTION 5 — TASK DETAIL
+   ════════════════════════════════════════════════════════════ */
+
+function openTaskDetail(taskId, e) {
+  if (e) e.stopPropagation();
+  const task = [...tasks.todo, ...tasks.inprog, ...tasks.done].find(t => t.id === taskId);
+  if (!task) return;
+  currentDetailTaskId = taskId;
+
+  if (!task._checked) task._checked = new Array(task.checklist.length).fill(false);
+  if (!taskLogs[taskId]) taskLogs[taskId] = ['Task opened · ' + new Date().toLocaleTimeString()];
+
+  // Populate fields
+  document.getElementById('detail-header-label').textContent = 'Task_' + task.id.toUpperCase();
+  document.getElementById('detail-title').textContent        = task.title;
+  document.getElementById('detail-tag').textContent          = task.tag;
+  document.getElementById('detail-due').textContent          = task.due;
+  document.getElementById('detail-desc').textContent         = task.desc;
+  const priEl = document.getElementById('detail-priority');
+  priEl.textContent = task.priority === 'high' ? 'High' : task.priority === 'med' ? 'Med' : 'Low';
+  priEl.className   = 'detail-priority ' + (task.priority === 'high' ? 'hi' : task.priority === 'med' ? 'med' : 'low');
+
+  // Checklist
+  const cl = document.getElementById('detail-checklist');
+  cl.innerHTML = '';
+  task.checklist.forEach((item, i) => {
+    const div = document.createElement('div');
+    div.className = 'detail-check-item' + (task._checked[i] ? ' checked' : '');
+    const cb = document.createElement('div');
+    cb.className = 'detail-cb';
+    cb.textContent = task._checked[i] ? '✓' : '';
+    const text = document.createElement('div');
+    text.className = 'detail-check-text';
+    text.textContent = item;
+    div.appendChild(cb);
+    div.appendChild(text);
+    div.onclick = () => {
+      task._checked[i] = !task._checked[i];
+      task.progress = Math.round((task._checked.filter(Boolean).length / task.checklist.length) * 100);
+      addLogEntry(taskId, `"${item}" ${task._checked[i] ? 'checked' : 'unchecked'}`);
+      persistChecklist(task.apiId, task._checked);
+      renderKanban();
+      openTaskDetail(taskId);
+    };
+    cl.appendChild(div);
+  });
+
+  // Progress bar
+  document.getElementById('detail-prog-pct').textContent    = task.progress + '%';
+  document.getElementById('detail-prog-fill').style.width   = task.progress + '%';
+
+  // Activity log
+  const logEl = document.getElementById('detail-log');
+  logEl.innerHTML = '';
+  (taskLogs[taskId] || []).slice().reverse().forEach((entry, i) => {
+    const d = document.createElement('div');
+    d.className   = 'log-line' + (i === 0 ? ' new' : '');
+    d.textContent = entry;
+    logEl.appendChild(d);
+  });
+
+  // Show backdrop
+  const bd = document.getElementById('detail-backdrop');
+  bd.style.display = 'block';
+  bd.classList.remove('closing');
+  bd.style.animation = 'none';
+  bd.offsetHeight;
+  bd.style.animation = '';
+
+  // Show widget (re-trigger animation so it works even when already open for a different card)
+  const det = document.getElementById('w-task-detail');
+  det.style.display = 'block';
+  det.classList.remove('closing');
+  det.style.animation = 'none';
+  det.offsetHeight;
+  det.style.animation = '';
+}
+
+function addLogEntry(taskId, msg) {
+  if (!taskLogs[taskId]) taskLogs[taskId] = [];
+  taskLogs[taskId].push(msg + ' · ' + new Date().toLocaleTimeString());
+}
+
+// Close detail when clicking backdrop
+document.getElementById('detail-backdrop').addEventListener('click', () => closeWidget('w-task-detail'));
+
+/* ════════════════════════════════════════════════════════════
+   SECTION 6 — NEW TASK MODAL
+   ════════════════════════════════════════════════════════════ */
+
+let _modalDefaultCol = 'todo';
+
+function openNewTaskModal(col) {
+  _modalDefaultCol = col || 'todo';
+  document.getElementById('modal-col').value   = _modalDefaultCol;
+  document.getElementById('modal-title').value = '';
+  document.getElementById('modal-desc').value  = '';
+  document.getElementById('modal-tag').value   = '';
+  document.getElementById('newTaskModal').classList.add('visible');
+  setTimeout(() => document.getElementById('modal-title').focus(), 50);
+}
+function closeNewTaskModal() {
+  document.getElementById('newTaskModal').classList.remove('visible');
+}
+async function submitNewTask() {
+  const title = document.getElementById('modal-title').value.trim();
+  const desc  = document.getElementById('modal-desc').value.trim();
+  const pri   = document.getElementById('modal-priority').value;
+  const tag   = document.getElementById('modal-tag').value.trim() || 'MISC';
+  const col   = document.getElementById('modal-col').value;
+
+  if (!title) return;
+
+  try {
+    await fetch(`${API_BASE}/api/tasks/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        title: title, 
+        description: desc, 
+        priority: pri, 
+        tag: tag, 
+        status: col 
+      })
+    });
+    // Refresh board from DB
+    await loadTasksFromBackend();
+    addChatLine('sys', `── TASK CREATED: ${title} ──`);
+  } catch (err) {
+    addChatLine('sys', '── ERROR: DATABASE PERSISTENCE FAILED ──');
+  }
+  closeNewTaskModal();
+}
+document.getElementById('newTaskModal').addEventListener('click', function(e) {
+  if (e.target === this) closeNewTaskModal();
+});
+
+/* ════════════════════════════════════════════════════════════
+   SECTION 7 — MUSIC PLAYER
+   ════════════════════════════════════════════════════════════ */
+
+let _playing = false, _progress = 55, _shuffleOn = false, _progInterval = null;
+
+function togglePlay() {
+  _playing = !_playing;
+  document.getElementById('playBtn').textContent    = _playing ? '⏸' : '▶';
+  document.getElementById('playStatus').textContent = _playing ? 'PLAYING' : 'IDLE';
+  if (_playing) {
+    _progInterval = setInterval(() => {
+      _progress = Math.min(_progress + 0.3, 100);
+      document.getElementById('progFill').style.width = _progress + '%';
+      if (_progress >= 100) {
+        clearInterval(_progInterval); _playing = false;
+        document.getElementById('playBtn').textContent    = '▶';
+        document.getElementById('playStatus').textContent = 'IDLE';
+      }
+    }, 200);
+  } else {
+    clearInterval(_progInterval);
+  }
+}
+function prevTrack()    { _progress = 0; document.getElementById('progFill').style.width = '0%'; }
+function nextTrack()    { _progress = 0; document.getElementById('progFill').style.width = '0%'; }
+function toggleShuffle() {
+  _shuffleOn = !_shuffleOn;
+  document.getElementById('shuffleBtn').style.color       = _shuffleOn ? '#ff9f1a' : '';
+  document.getElementById('shuffleBtn').style.borderColor = _shuffleOn ? 'rgba(255,159,26,0.5)' : '';
+}
+function scrub(e) {
+  const bar = document.getElementById('progBar'), r = bar.getBoundingClientRect();
+  _progress = Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100));
+  document.getElementById('progFill').style.width = _progress + '%';
+}
+
+/* ════════════════════════════════════════════════════════════
+   SECTION 8 — CHAT
+   ════════════════════════════════════════════════════════════ */
+
+/* ── UNIFIED COMMAND DISPATCHER ── */
+async function sendCommandToGracePipeline(text, type = "text") {
+  let context = "OPEN_GRID";
+  if (document.body.classList.contains('map-active')) context = "MAP_FULLSCREEN";
+  if (document.body.classList.contains('kanban-active')) context = "KANBAN_WORKSPACE";
+
+  try {
+    await fetch(`${API_BASE}/api/command/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, input_type: type, layout_context: context })
+    });
+  } catch (error) {
+    addChatLine('sys', '── ERROR: PIPELINE UNREACHABLE ──');
+  }
+}
+
+function sendMsg(e) { if (e.key === 'Enter') sendFromBtn(); }
+
+async function sendFromBtn() {
+  const inp = document.getElementById('chatIn');
+  if (!inp) return;
+  const val = inp.value.trim(); 
+  if (!val) return;
+
+  addChatLine('user', val); 
+  inp.value = '';
+  await sendCommandToGracePipeline(val, "text");
+}
+
+async function handleVoiceCommand(transcript) {
+  addChatLine('user', transcript);
+  await sendCommandToGracePipeline(transcript, "voice");
+}
+
+function addChatLine(type, text) {
+  const body = document.getElementById('chatBody');
+  if (!body) return;
+  const d = document.createElement('div'); d.className = 'chat-line ' + type; d.textContent = text;
+  body.appendChild(d);
+  body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
+}
+
+// Load past conversations from the backend so the chat persists across sessions.
+async function loadChatHistory() {
+  const body = document.getElementById('chatBody');
+  if (!body) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/logs/?limit=40`);
+    const data = await res.json();
+    const logs = (data.logs || []).slice().reverse();   // API is newest-first; show oldest→newest
+    body.innerHTML = '';
+    if (!logs.length) { addChatLine('sys', '── new session ──'); return; }
+    addChatLine('sys', '── earlier conversation ──');
+    logs.forEach(l => {
+      if (l.user_input) addChatLine('user', l.user_input);
+      if (l.grace_response) addChatLine('grace', l.grace_response);
+    });
+    body.scrollTop = body.scrollHeight;
+  } catch (e) {
+    if (!body.children.length) addChatLine('sys', '── session start ──');
+  }
+}
+
+/* ── STREAMING CHAT (typewriter reveal) ──
+   The backend pushes start/delta/done packets over SSE. Because the router can
+   deliver Claude's output in a few large chunks, we buffer the full text and
+   reveal it at a steady pace so it reads like live typing. */
+const _graceStreams = {};   // stream_id -> { el, full, shown, done, timer }
+
+// Finalize and clear any lingering text streams. Called when a new reply begins
+// so an abandoned/stuck previous stream can't leak its timer or resurrect its
+// text into the next answer. Any partially-shown line is snapped to its full
+// text and left in the chat log.
+function _graceStreamReset() {
+  for (const sid of Object.keys(_graceStreams)) {
+    const s = _graceStreams[sid];
+    if (!s) continue;
+    if (s.timer) { clearInterval(s.timer); s.timer = null; }
+    if (s.el) { s.el.textContent = s.full; }   // finalize whatever we had
+    delete _graceStreams[sid];
+  }
+}
+
+function _graceStreamStart(sid) {
+  const body = document.getElementById('chatBody');
+  if (!body || _graceStreams[sid]) return;
+  const el = document.createElement('div');
+  el.className = 'chat-line grace';
+  el.textContent = '▍';                       // caret until first token lands
+  body.appendChild(el);
+  body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
+  _graceStreams[sid] = { el, full: '', shown: 0, done: false, timer: null };
+}
+
+function _graceStreamDelta(sid, text) {
+  if (!_graceStreams[sid]) _graceStreamStart(sid);
+  const s = _graceStreams[sid];
+  if (!s) return;
+  s.full += text;
+  _graceStreamPump(sid);
+}
+
+function _graceStreamEnd(sid, fullMessage) {
+  const s = _graceStreams[sid];
+  if (!s) { if (fullMessage) addChatLine('grace', fullMessage); return; }
+  if (fullMessage) s.full = fullMessage;       // authoritative final text
+  s.done = true;
+  // If the pump timer already stopped (caught up and idled), it won't restart
+  // itself — so kick it here. _graceStreamPump no-ops if a timer is running.
+  _graceStreamPump(sid);
+  // Safety net: if for any reason the timer isn't advancing, finalize directly
+  // on the next macrotask so the line never gets stuck half-shown.
+  setTimeout(() => {
+    const cur = _graceStreams[sid];
+    if (cur && cur.done && (!cur.timer || cur.shown >= cur.full.length)) {
+      if (cur.timer) { clearInterval(cur.timer); cur.timer = null; }
+      cur.el.textContent = cur.full;
+      delete _graceStreams[sid];
+    }
+  }, 0);
+}
+
+function _graceStreamPump(sid) {
+  const s = _graceStreams[sid];
+  if (!s || s.timer) return;
+  const body = document.getElementById('chatBody');
+  s.timer = setInterval(() => {
+    const cur = _graceStreams[sid];
+    if (!cur) { clearInterval(s.timer); return; }   // reset out from under us
+    if (cur.shown < cur.full.length) {
+      // Adaptive reveal: keep pace with what's already arrived so text never
+      // lags behind the stream. The larger the backlog, the more chars per
+      // tick (min 3 for a gentle typing feel, scaling up with ~8% of pending).
+      const pending = cur.full.length - cur.shown;
+      const step = Math.max(3, Math.ceil(pending * 0.08));
+      cur.shown = Math.min(cur.full.length, cur.shown + step);
+      cur.el.textContent = cur.full.slice(0, cur.shown) + (cur.done && cur.shown >= cur.full.length ? '' : '▍');
+      if (body) body.scrollTo({ top: body.scrollHeight });
+    } else if (cur.done) {
+      cur.el.textContent = cur.full;                    // drop caret, finalize
+      clearInterval(cur.timer); cur.timer = null;
+      delete _graceStreams[sid];
+    } else {
+      clearInterval(cur.timer); cur.timer = null;       // caught up, await more
+    }
+  }, 18);
+}
+
+/* ── SEQUENTIAL SPEECH QUEUE ──
+   Sentence audio chunks stream in as G.R.A.C.E. speaks. Each carries a `seq`
+   number, but chunks synthesize in parallel and can arrive out of order and
+   with GAPS (a chunk whose audio failed, or is still rendering). We play strictly
+   in ascending seq order and NEVER overlap: exactly one clip plays at a time.
+   We do not assume seq numbers are consecutive — we always play the smallest
+   pending seq greater than the last one played.
+
+   TEXT REVEAL is now driven by AUDIO PLAYBACK: each sentence's text arrives on
+   a `sentence` packet keyed to the same seq. When we start playing seq N's audio,
+   we reveal seq N's text in lockstep (typewriter effect synced to audio progress).
+   Result: text and voice stay together, never racing ahead. */
+const _speech = {
+  lastPlayed: -1,         // highest seq whose audio finished
+  pending: {},            // seq -> audio URL
+  pendingText: {},        // seq -> sentence text
+  playing: false,
+  audio: null,
+  idleTimer: null,
+  playedUrls: new Set(),
+  el: null,               // the chat line element
+  committed: '',          // all text revealed so far (sentences 0..lastPlayed)
+  currentText: '',        // sentence text for the clip currently playing
+  maxSeq: -1,             // highest seq seen (from sentence packets)
+  finalText: '',          // authoritative full message from done packet
+  done: false
+};
+
+function _speechReset() {
+  try { if (_speech.audio) _speech.audio.pause(); } catch (e) {}
+  if (_speech.idleTimer) { clearTimeout(_speech.idleTimer); _speech.idleTimer = null; }
+  _speech.lastPlayed = -1; _speech.pending = {}; _speech.pendingText = {};
+  _speech.playing = false; _speech.audio = null;
+  _speech.el = null; _speech.committed = ''; _speech.currentText = '';
+  _speech.maxSeq = -1; _speech.finalText = ''; _speech.done = false;
+  // playedUrls is intentionally NOT cleared — unique filenames make a leaked
+  // connection's duplicate start+chunk a no-op instead of an echo.
+}
+
+function _speechStart(sid) {
+  _speechReset();
+  const body = document.getElementById('chatBody');
+  if (!body) return;
+  const el = document.createElement('div');
+  el.className = 'chat-line grace';
+  el.textContent = '▍';  // caret until first sentence lands
+  body.appendChild(el);
+  body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
+  _speech.el = el;
+}
+
+function _speechStoreSentence(seq, text) {
+  if (typeof seq !== 'number') return;
+  _speech.pendingText[seq] = text;
+  if (seq > _speech.maxSeq) _speech.maxSeq = seq;
+}
+
+// Immediate, non-audio-gated text (e.g. "[searching the web: ...]"). Shown right
+// away in the current line — status the operator should see without waiting.
+function _speechNotice(text) {
+  if (!_speech.el) return;
+  _speech.committed += text;
+  _speechReveal(_speech.currentText.length);
+}
+
+function _speechEnqueue(seq, url) {
+  const fullUrl = url ? `${API_BASE}${url}` : '';
+  if (fullUrl && _speech.playedUrls.has(fullUrl)) return;  // already played
+  if (typeof seq !== 'number') seq = _speech.lastPlayed + 1;
+  if (seq <= _speech.lastPlayed) return;  // stale
+  _speech.pending[seq] = fullUrl;
+  _speechDrain();
+}
+
+function _speechReveal(charIndex) {
+  // Reveal committed text + partial currentText up to charIndex, with caret if not done.
+  if (!_speech.el) return;
+  const partial = _speech.currentText.slice(0, charIndex);
+  const caret = (!_speech.done || Object.keys(_speech.pending).length > 0 || _speech.playing) ? '▍' : '';
+  _speech.el.textContent = _speech.committed + partial + caret;
+  const body = document.getElementById('chatBody');
+  if (body) body.scrollTo({ top: body.scrollHeight });
+}
+
+function _speechCommitCurrent() {
+  _speech.committed += _speech.currentText;
+  _speech.currentText = '';
+}
+
+function _speechFinalizeIfDone() {
+  // Finalize when done=true AND we've played all expected audio (lastPlayed >= maxSeq)
+  // AND nothing is pending/playing. Use finalText as authoritative if set, else committed.
+  if (!_speech.done) return;
+  if (_speech.playing) return;
+  if (Object.keys(_speech.pending).length > 0) return;
+  if (_speech.maxSeq >= 0 && _speech.lastPlayed < _speech.maxSeq) return;
+  if (!_speech.el) return;
+  _speech.el.textContent = _speech.finalText || _speech.committed;  // drop caret, finalize
+  _speech.el = null;  // detach so no further updates
+}
+
+function _speechDrain() {
+  if (_speech.playing) return;  // one clip at a time
+  const seqs = Object.keys(_speech.pending).map(Number).sort((a, b) => a - b);
+  if (!seqs.length) { _speechFinalizeIfDone(); return; }
+
+  const earliest = seqs[0];
+  // Wait briefly if the true next seq hasn't landed yet — but not forever. After
+  // ~1.5s, skip ahead to whatever's available so a lost chunk can't stall speech.
+  if (earliest !== _speech.lastPlayed + 1) {
+    if ((_speech._gapWaits || 0) < 3) {
+      if (!_speech.idleTimer) {
+        _speech.idleTimer = setTimeout(() => {
+          _speech.idleTimer = null;
+          _speech._gapWaits = (_speech._gapWaits || 0) + 1;
+          _speechDrain();
+        }, 500);
+      }
+      return;
+    }
+  }
+  _speech._gapWaits = 0;
+  if (_speech.idleTimer) { clearTimeout(_speech.idleTimer); _speech.idleTimer = null; }
+
+  const url = _speech.pending[earliest];
+  delete _speech.pending[earliest];
+  _speech.lastPlayed = earliest;
+  _speech.currentText = _speech.pendingText[earliest] || '';
+  delete _speech.pendingText[earliest];
+
+  // Empty URL = TTS failed or silent sentence. Reveal text instantly with quick typewriter, then advance.
+  if (!url) {
+    let i = 0;
+    const len = _speech.currentText.length;
+    const step = () => {
+      if (i < len) {
+        _speechReveal(Math.min(i + 5, len));
+        i += 5;
+        setTimeout(step, 18);
+      } else {
+        _speechCommitCurrent();
+        _speechDrain();
+      }
+    };
+    step();
+    return;
+  }
+
+  if (_speech.playedUrls.has(url)) {
+    // Already played this exact clip (leaked connection echo guard). Skip audio but still reveal text.
+    _speechCommitCurrent();
+    _speechDrain();
+    return;
+  }
+
+  _speech.playing = true;
+  _pauseMicForSpeech();          // stop the mic so it can't hear her on speakers
+  _speech.playedUrls.add(url);
+  const a = new Audio(url);
+  _speech.audio = a;
+  let advanced = false;
+
+  const advance = () => {
+    if (advanced || _speech.audio !== a) return;
+    advanced = true;
+    _speech.playing = false; _speech.audio = null;
+    // She just finished a reply — reopen the hands-free window so you can respond
+    // without saying "Grace" again.
+    _followUpUntil = Date.now() + FOLLOWUP_MS;
+    _speechCommitCurrent();
+    _speechDrain();
+    // If nothing else is queued, she's fully done → turn the mic back on.
+    if (!_speech.playing) _resumeMicAfterSpeech();
+  };
+
+  // Reveal text in sync with audio playback progress.
+  a.ontimeupdate = () => {
+    if (_speech.audio !== a || !_speech.currentText.length) return;
+    const frac = a.duration > 0 ? a.currentTime / a.duration : 1;
+    const charIndex = Math.ceil(frac * _speech.currentText.length);
+    _speechReveal(charIndex);
+  };
+
+  a.onended = advance;
+  a.onerror = advance;
+  a.play().catch(() => advance());
+}
+
+/* ════════════════════════════════════════════════════════════
+   SECTION 10 — MAP ENGINE
+   ════════════════════════════════════════════════════════════ */
+let mapLayers = {}, currentLayer = 'dark', trafficOn = false;
+
+function initMapEngine() {
+  if (!document.getElementById('leaflet-map')) return;
+  const malibu = [34.0259, -118.7798];
+  const m = L.map('leaflet-map', {
+    zoomControl: false, attributionControl: true,
+    maxBoundsViscosity: 0.7, rotate: true, touchRotate: true
+  }).setView(malibu, 11);
+  window._leafletMap = m;
+
+  mapLayers.dark    = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 });
+  mapLayers.street  = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',           { maxZoom: 19 });
+  mapLayers.sat     = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+  mapLayers.traffic = L.tileLayer('/api/map/traffic/{z}/{x}/{y}.png', { maxZoom: 18, opacity: 0.8 });
+
+  mapLayers[currentLayer].addTo(m);
+  m.on('mousemove', e => {
+    document.getElementById('mapCoords').textContent =
+      e.latlng.lat.toFixed(4) + '° N, ' + e.latlng.lng.toFixed(4) + '° E';
+  });
+  makeGlowMarker(malibu, 'Point Zero Central Command').addTo(m);
+}
+
+function makeGlowMarker(ll, title) {
+  const icon = L.divIcon({
+    className: 'custom-glow-marker',
+    html: `<div style="position:relative;width:12px;height:12px;">
+      <div style="position:absolute;inset:-6px;background:#00d4ff;border-radius:50%;opacity:0.4;animation:dotBlink 1.5s ease-in-out infinite;"></div>
+      <div style="width:12px;height:12px;background:#fff;border:2px solid #00bfff;border-radius:50%;box-shadow:0 0 10px #00d4ff;"></div>
+    </div>`,
+    iconSize: [12,12], iconAnchor: [6,6]
+  });
+  return L.marker(ll, { icon }).bindPopup(`<b>${title}</b>`);
+}
+
+function setLayer(name) {
+  if (!window._leafletMap || currentLayer === name) return;
+  window._leafletMap.removeLayer(mapLayers[currentLayer]);
+  mapLayers[name].addTo(window._leafletMap);
+  currentLayer = name;
+  document.getElementById('layerLabel').textContent = name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function toggleTraffic() {
+  if (!window._leafletMap) return;
+  trafficOn = !trafficOn;
+  const btn  = document.getElementById('btnTraffic');
+  const stat = document.getElementById('trafficLabel');
+  if (trafficOn) {
+    mapLayers.traffic.addTo(window._leafletMap);
+    btn.style.borderColor = 'rgba(0,210,255,0.7)';
+    btn.style.color       = '#00d4ff';
+    btn.style.boxShadow   = '0 0 10px rgba(0,210,255,0.4)';
+    stat.textContent      = 'ON';
+    stat.style.color      = '#00d4ff';
+  } else {
+    window._leafletMap.removeLayer(mapLayers.traffic);
+    btn.style.borderColor = ''; btn.style.color = ''; btn.style.boxShadow = '';
+    stat.textContent      = 'OFF'; stat.style.color = '';
+  }
+}
+
+function mapRotateLeft()   { window._leafletMap && window._leafletMap.setBearing(window._leafletMap.getBearing() - 45); }
+function mapRotateRight()  { window._leafletMap && window._leafletMap.setBearing(window._leafletMap.getBearing() + 45); }
+function mapResetBearing() { window._leafletMap && window._leafletMap.setBearing(0); }
+function mapZoomIn()  { window._leafletMap && window._leafletMap.zoomIn(); }
+function mapZoomOut() { window._leafletMap && window._leafletMap.zoomOut(); }
+
+function goToMe() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(pos => {
+    const ll = [pos.coords.latitude, pos.coords.longitude];
+    window._leafletMap.flyTo(ll, 13, { duration: 1.5 });
+    makeGlowMarker(ll, 'You are here').addTo(window._leafletMap).openPopup();
+  });
+}
+
+function searchLocation(e) {
+  if (e.key !== 'Enter') return;
+  const q = document.getElementById('mapSearchIn').value.trim(); if (!q) return;
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d && d.length > 0) {
+        const ll = [parseFloat(d[0].lat), parseFloat(d[0].lon)];
+        window._leafletMap.panTo(ll);
+        makeGlowMarker(ll, d[0].display_name.split(',')[0]).addTo(window._leafletMap).openPopup();
+      }
+    });
+}
+
+
+
+/* ════════════════════════════════════════════════════════════
+   SECTION — voice control
+   ════════════════════════════════════════════════════════════ */
+
+// Voice input state. _voiceOn = the user's on/off intent (the toggle). It stays
+// true across the automatic restarts Chrome does after silence, so the mic feels
+// "always on" until the user clicks it off.
+let _recognition = null;
+let _voiceOn = false;
+// Follow-up window: after you address her by name (or after she finishes
+// speaking), you can keep talking WITHOUT saying "Grace" until this time passes.
+let _followUpUntil = 0;
+const FOLLOWUP_MS = 18000;   // ~18s of hands-free conversation after each reply
+// While Grace is speaking we STOP the mic (so on speakers it can't hear her own
+// voice); this flag stops the auto-restart from firing during that pause.
+let _micPausedForSpeech = false;
+
+// Stop listening while Grace talks (prevents speaker echo/feedback).
+function _pauseMicForSpeech() {
+  if (!_voiceOn) return;
+  _micPausedForSpeech = true;
+  try { if (_recognition) _recognition.stop(); } catch (e) {}
+}
+// Resume listening shortly after she finishes (buffer lets the audio tail die).
+function _resumeMicAfterSpeech() {
+  _micPausedForSpeech = false;
+  if (!_voiceOn) return;
+  setTimeout(() => {
+    if (_voiceOn && !_speech.playing && !_micPausedForSpeech) { try { _startVoice(); } catch (e) {} }
+  }, 500);
+}
+
+// Wake word: returns the command with the wake word ("Grace", optionally preceded
+// by hey/ok/hi) stripped from the front — or null if she wasn't addressed.
+function _stripWakeWord(text) {
+  const m = (text || '').match(/^\s*(?:hey\s+|ok(?:ay)?\s+|hi\s+|yo\s+)?grace\b[\s,.:!?'-]*(.*)$/i);
+  return m ? m[1].trim() : null;
+}
+
+function toggleVoice() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    addChatLine('sys', '── Voice input isn\'t supported in this browser — try Chrome/Edge ──');
+    return;
+  }
+  if (_voiceOn) {                 // ── turn OFF ──
+    _voiceOn = false;
+    try { _recognition && _recognition.stop(); } catch (e) {}
+    document.getElementById('btn-voice').classList.remove('listening');
+    document.getElementById('statusTxt').textContent = 'System online · Radar Array Active';
+    const input = document.getElementById('chatIn');
+    if (input) { input.value = ''; input.placeholder = 'enter message...'; }
+    return;
+  }
+  _voiceOn = true;                // ── turn ON (stays on) ──
+  _startVoice();
+}
+
+function _startVoice() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  _recognition = new SpeechRecognition();
+  _recognition.continuous = true;
+  _recognition.interimResults = true;
+  _recognition.lang = 'en-US';
+  const input = document.getElementById('chatIn');
+
+  _recognition.onstart = () => {
+    document.getElementById('btn-voice').classList.add('listening');
+    document.getElementById('statusTxt').textContent = 'Listening for “Grace…” (click mic to stop)';
+    if (input) input.placeholder = '🎙 say “Grace …”';
+  };
+  _recognition.onresult = (event) => {
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const res = event.results[i];
+      if (res.isFinal) {
+        const said = (res[0].transcript || '').trim();
+        if (input) input.value = '';
+        // Ignore anything picked up WHILE Grace is speaking (avoid an echo loop).
+        const graceSpeaking = (typeof _speech !== 'undefined' && _speech && _speech.playing);
+        if (!said || graceSpeaking) continue;
+        const now = Date.now();
+        const cmd = _stripWakeWord(said);
+        if (cmd !== null) {
+          // Addressed by name ("Grace …") — always acts, and opens the follow-up window.
+          if (!cmd) { addChatLine('sys', '── yes? (say “Grace” + your command) ──'); continue; }
+          handleVoiceCommand(cmd);
+          _followUpUntil = now + FOLLOWUP_MS;
+        } else if (now < _followUpUntil) {
+          // Still mid-conversation — no wake word needed. Send the whole thing.
+          handleVoiceCommand(said);
+          _followUpUntil = now + FOLLOWUP_MS;
+        }
+        // else: not addressed + window closed → ignore (background chatter)
+      } else {
+        interim += res[0].transcript;
+      }
+    }
+    if (input && interim) input.value = interim;
+  };
+  _recognition.onerror = (event) => {
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      _voiceOn = false;
+      addChatLine('sys', '── voice: microphone permission denied ──');
+    } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+      addChatLine('sys', '── voice: ' + event.error + ' ──');
+    }
+  };
+  _recognition.onend = () => {
+    // Chrome ends the session after silence even in continuous mode — restart a
+    // fresh instance if the user still wants it on AND we're not deliberately
+    // paused for Grace's speech (that resume is handled separately).
+    if (_voiceOn && !_micPausedForSpeech) {
+      setTimeout(() => { if (_voiceOn && !_micPausedForSpeech && !_speech.playing) { try { _startVoice(); } catch (e) {} } }, 250);
+    } else if (!_voiceOn) {
+      document.getElementById('btn-voice').classList.remove('listening');
+      document.getElementById('statusTxt').textContent = 'System online · Radar Array Active';
+      if (input) input.placeholder = 'enter message...';
+    }
+    // else (paused for speech): stay put; _resumeMicAfterSpeech() will restart it
+  };
+  _recognition.start();
+}
+
+/* ════════════════════════════════════════════════════════════
+   SECTION 12 — INITIALIZATION
+   ════════════════════════════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded', () => {
+  // Boot Map
+  initMapEngine();
+
+  // Hide all widgets
+  ['w-map', 'w-kanban', 'w-task-detail', 'w-music', 'w-chat', 'w-sys', 'w-weather', 'w-calendar', 'w-upload', 'w-code', 'w-projects', 'w-doc', 'w-habits'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+
+  // Hydrate data
+  loadTasksFromBackend();
+  loadProjects();
+  calInit();
+  loadChatHistory();
+});
+/* ════════════════════════════════════════════════════════════
+   SECTION 12 — CALENDAR
+   ════════════════════════════════════════════════════════════ */
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+// Event store: key = "YYYY-MM-DD", value = array of { time, title, priority }
+let calEvents = {};
+
+async function calLoadFromBackend() {
+  try {
+    const res = await fetch(`${API_BASE}/api/events/`);
+    const rows = await res.json();
+    calEvents = {};
+    rows.forEach(ev => {
+      if (!calEvents[ev.date_key]) calEvents[ev.date_key] = [];
+      calEvents[ev.date_key].push({ id: ev.id, time: ev.time, title: ev.title, priority: ev.priority });
+    });
+  } catch (err) {
+    addChatLine('sys', '── CALENDAR: COULD NOT REACH BACKEND ──');
+  }
+  calRender();
+}
+
+function _todayKey(offsetDays) {
+  const d = new Date(); d.setDate(d.getDate() + offsetDays);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+let calViewYear, calViewMonth, calSelectedKey = null;
+
+function calInit() {
+  const now = new Date();
+  calViewYear  = now.getFullYear();
+  calViewMonth = now.getMonth();
+  calSelectedKey = _todayKey(0);
+  calRender();
+  calLoadFromBackend();
+  calTickClock();
+  setInterval(calTickClock, 1000);
+}
+
+function calTickClock() {
+  const now = new Date();
+  const hh  = String(now.getHours()).padStart(2,'0');
+  const mm  = String(now.getMinutes()).padStart(2,'0');
+  const ss  = String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('cal-hhmm').textContent = hh + ':' + mm;
+  document.getElementById('cal-ss').textContent   = ':' + ss;
+  document.getElementById('cal-date-label').innerHTML =
+    DAYS_SHORT[now.getDay()].toUpperCase() + '<br>' +
+    String(now.getDate()).padStart(2,'0') + ' ' + MONTHS[now.getMonth()].toUpperCase().slice(0,3) + ' ' + now.getFullYear();
+}
+
+function calRender() {
+  document.getElementById('cal-month-label').textContent =
+    MONTHS[calViewMonth].toUpperCase() + ' · ' + calViewYear;
+
+  const today    = new Date();
+  const firstDay = new Date(calViewYear, calViewMonth, 1).getDay();
+  const daysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
+  const daysInPrev  = new Date(calViewYear, calViewMonth, 0).getDate();
+
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = '';
+
+  const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+
+  for (let i = 0; i < totalCells; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cal-day';
+
+    let dayNum, year = calViewYear, month = calViewMonth, isOther = false;
+    if (i < firstDay) {
+      // Prev month days
+      dayNum = daysInPrev - firstDay + i + 1;
+      month  = calViewMonth - 1;
+      if (month < 0) { month = 11; year--; }
+      isOther = true;
+      cell.classList.add('other-month');
+    } else if (i >= firstDay + daysInMonth) {
+      // Next month days
+      dayNum = i - firstDay - daysInMonth + 1;
+      month  = calViewMonth + 1;
+      if (month > 11) { month = 0; year++; }
+      isOther = true;
+      cell.classList.add('other-month');
+    } else {
+      dayNum = i - firstDay + 1;
+    }
+
+    const key = year + '-' + String(month+1).padStart(2,'0') + '-' + String(dayNum).padStart(2,'0');
+
+    // Today highlight
+    if (!isOther && dayNum === today.getDate() && calViewMonth === today.getMonth() && calViewYear === today.getFullYear()) {
+      cell.classList.add('today');
+    }
+    // Selected
+    if (key === calSelectedKey) cell.classList.add('selected');
+
+    // Day number
+    const numEl = document.createElement('div');
+    numEl.className = 'cal-day-num';
+    numEl.textContent = dayNum;
+    cell.appendChild(numEl);
+
+    // Event dots
+    if (calEvents[key] && calEvents[key].length > 0) {
+      const dotsEl = document.createElement('div');
+      dotsEl.className = 'cal-day-dots';
+      calEvents[key].slice(0, 3).forEach(ev => {
+        const dot = document.createElement('div');
+        dot.className = 'cal-dot ' + (ev.priority || 'med');
+        dotsEl.appendChild(dot);
+      });
+      cell.appendChild(dotsEl);
+    }
+
+    if (!isOther) {
+      cell.onclick = () => calSelectDay(key, dayNum);
+    }
+    grid.appendChild(cell);
+  }
+
+  // Refresh events panel for selected key
+  if (calSelectedKey) calShowEvents(calSelectedKey);
+}
+
+function calSelectDay(key, dayNum) {
+  calSelectedKey = key;
+  // Re-render to update selected highlight
+  calRender();
+}
+
+function calShowEvents(key) {
+  const parts = key.split('-');
+  const label = String(parseInt(parts[2])).padStart(2,'0') + ' ' +
+    MONTHS[parseInt(parts[1])-1].toUpperCase().slice(0,3) + ' ' + parts[0];
+  document.getElementById('cal-events-date').textContent = label;
+
+  const list = document.getElementById('cal-events-list');
+  list.innerHTML = '';
+  const evs = calEvents[key] || [];
+
+  if (evs.length === 0) {
+    list.innerHTML = '<div class="cal-no-events">No events scheduled</div>';
+    return;
+  }
+
+  // Sort by time
+  const sorted = [...evs].sort((a,b) => a.time.localeCompare(b.time));
+  sorted.forEach(ev => {
+    const item = document.createElement('div');
+    item.className = 'cal-event-item ' + (ev.priority || 'med');
+    const timeEl = document.createElement('div');
+    timeEl.className = 'cal-event-time';
+    timeEl.textContent = ev.time;
+    const titleEl = document.createElement('div');
+    titleEl.className = 'cal-event-title';
+    titleEl.textContent = ev.title;
+    const tagEl = document.createElement('div');
+    tagEl.className = 'cal-event-tag';
+    tagEl.textContent = ev.priority === 'hi' ? 'HIGH' : ev.priority === 'low' ? 'LOW' : 'MED';
+    const delBtn = document.createElement('div');
+    delBtn.className = 'cal-event-del';
+    delBtn.textContent = '✕';
+    delBtn.title = 'Delete event';
+    delBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (!ev.id) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/events/${ev.id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        await calLoadFromBackend();
+        addChatLine('sys', `── EVENT DELETED: ${ev.title} ──`);
+      } catch (err) {
+        addChatLine('sys', '── CALENDAR: DELETE FAILED ──');
+      }
+    };
+    // Edit button — expands an inline edit row
+    const editBtn = document.createElement('div');
+    editBtn.className = 'cal-event-edit';
+    editBtn.textContent = '✎';
+    editBtn.title = 'Edit event';
+    editBtn.onclick = (e) => {
+      e.stopPropagation();
+      // Toggle inline edit row
+      const existing = item.querySelector('.cal-event-edit-row');
+      if (existing) { existing.remove(); return; }
+      const row = document.createElement('div');
+      row.className = 'cal-event-edit-row';
+      const tInput = document.createElement('input');
+      tInput.className = 'cal-edit-input'; tInput.value = ev.title; tInput.placeholder = 'Title';
+      const timeInput = document.createElement('input');
+      timeInput.className = 'cal-edit-time'; timeInput.value = ev.time; timeInput.placeholder = 'HH:MM';
+      const saveBtn = document.createElement('div');
+      saveBtn.className = 'cal-edit-save'; saveBtn.textContent = 'SAVE';
+      saveBtn.onclick = async (e2) => {
+        e2.stopPropagation();
+        const newTitle = tInput.value.trim();
+        const newTime  = timeInput.value.trim();
+        if (!newTitle) return;
+        try {
+          const res = await fetch(`${API_BASE}/api/events/${ev.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle, time: newTime || ev.time })
+          });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          await calLoadFromBackend();
+        } catch (err) {
+          addChatLine('sys', '── CALENDAR: EDIT FAILED ──');
+        }
+      };
+      row.appendChild(tInput); row.appendChild(timeInput); row.appendChild(saveBtn);
+      item.appendChild(row);
+    };
+    item.appendChild(timeEl);
+    item.appendChild(titleEl);
+    item.appendChild(tagEl);
+    item.appendChild(editBtn);
+    item.appendChild(delBtn);
+    list.appendChild(item);
+  });
+}
+
+function calPrevMonth() {
+  calViewMonth--;
+  if (calViewMonth < 0) { calViewMonth = 11; calViewYear--; }
+  calRender();
+}
+function calNextMonth() {
+  calViewMonth++;
+  if (calViewMonth > 11) { calViewMonth = 0; calViewYear++; }
+  calRender();
+}
+
+function calAddEvent(e) { if (e.key === 'Enter') calAddEventBtn(); }
+async function calAddEventBtn() {
+  const title = document.getElementById('cal-add-title').value.trim();
+  const time  = document.getElementById('cal-add-time').value.trim() || '00:00';
+  const key   = calSelectedKey || _todayKey(0);
+  if (!title) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/events/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date_key: key, time, title, priority: 'med' })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    document.getElementById('cal-add-title').value = '';
+    document.getElementById('cal-add-time').value  = '';
+    await calLoadFromBackend();
+  } catch (err) {
+    addChatLine('sys', '── CALENDAR: EVENT NOT SAVED ──');
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   SECTION 13 — FILE UPLOAD
+   ════════════════════════════════════════════════════════════ */
+
+let _uploadedFile   = null; // { name, size, type, category, content }
+let _uploadProgress = null;
+
+const FILE_ICONS = { pdf:'📄', img:'🖼️', text:'📝', data:'📊', other:'📎' };
+const FILE_CATS  = {
+  'application/pdf': 'pdf',
+  'text/plain':'text', 'text/csv':'data', 'text/markdown':'text',
+  'application/json':'data',
+  'image/png':'img','image/jpeg':'img','image/gif':'img','image/webp':'img',
+};
+
+function _getFileCat(mime, name) {
+  if (FILE_CATS[mime]) return FILE_CATS[mime];
+  const ext = name.split('.').pop().toLowerCase();
+  if (['txt','md','text'].includes(ext)) return 'text';
+  if (['csv','json','xml'].includes(ext)) return 'data';
+  if (['png','jpg','jpeg','gif','webp'].includes(ext)) return 'img';
+  if (ext === 'pdf') return 'pdf';
+  return 'other';
+}
+
+function _isAllowedExtension(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const allowedExts = ['pdf', 'txt', 'md', 'csv', 'json', 'xml', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'html', 'htm', 'css', 'js', 'mjs', 'ts', 'py'];
+  return allowedExts.includes(ext);
+}
+
+function _fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1048576).toFixed(1) + ' MB';
+}
+
+/* ── Drag / drop zone ── */
+function uploadDragOver(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.add('dragover');
+}
+function uploadDragLeave(e) {
+  document.getElementById('upload-zone').classList.remove('dragover');
+}
+function uploadDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('dragover');
+  [...(e.dataTransfer.files || [])].forEach(f => _processUpload(f));
+}
+function uploadFileSelected(e) {
+  [...(e.target.files || [])].forEach(f => _processUpload(f));
+  e.target.value = ''; // reset so same file can be re-selected
+}
+
+/* ── Core upload flow ── */
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'text/plain', 'text/csv', 'text/markdown',
+  'application/json',
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+  'text/html', 'text/css',
+  'application/javascript', 'text/javascript',
+  'application/xml', 'text/xml',
+  'application/x-python-code', 'text/x-python'
+];
+
+const MAX_FILES = 6;
+
+function _processUpload(file) {
+  // Validate file size
+  if (file.size > MAX_FILE_SIZE) {
+    addChatLine('sys', `── File too large: ${_fmtSize(file.size)} (max 10MB) ──`);
+    return;
+  }
+
+  // Validate MIME type
+  if (!ALLOWED_MIME_TYPES.includes(file.type) && !_isAllowedExtension(file.name)) {
+    addChatLine('sys', `── File type not allowed: ${file.type || 'unknown'} ──`);
+    return;
+  }
+
+  const list = document.getElementById('upload-file-list');
+  // Re-uploading the same name replaces the old item (backend does the same).
+  const existing = document.getElementById('upload-item-' + _safeId(file.name));
+  if (existing) existing.remove();
+  // Cap the number of attached files.
+  if (list.children.length >= MAX_FILES) {
+    addChatLine('sys', `── Up to ${MAX_FILES} files at once — remove one first ──`);
+    return;
+  }
+
+  const cat  = _getFileCat(file.type, file.name);
+  const item = _buildFileItem(file, cat);
+  list.appendChild(item);
+
+  // Determine how Grace should read it: images & PDFs go as binary (base64) for
+  // her vision; Word docs go as base64 for server-side text extraction;
+  // everything else as text.
+  const mime = file.type || '';
+  const isDocx = mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+               || /\.docx$/i.test(file.name);
+  let kind = 'text';
+  if (mime.startsWith('image/') || cat === 'img') kind = 'image';
+  else if (mime === 'application/pdf' || /\.pdf$/i.test(file.name)) kind = 'pdf';
+  else if (isDocx) kind = 'docx';
+
+  // Read file content
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    _uploadedFile = {
+      name: file.name, size: file.size,
+      type: file.type, category: cat,
+      content: ev.target.result
+    };
+    // Send it to Grace so she can read it. The backend decides editability and
+    // returns the extracted text — .txt/.docx and text-layer PDFs open in the
+    // document editor; scanned PDFs/images/code go their usual routes.
+    _uploadGraceDoc(file.name, mime, kind, ev.target.result).then((res) => {
+      if (res && res.ok && res.editable && res.text != null) {
+        openDocEditor(file.name, res.text, res.fmt || 'txt');
+      } else {
+        const isCode = codeOpenFromUpload(file.name, ev.target.result);
+        if (!isCode) _attachToChat(file.name);
+        if (res && res.scanned) {
+          addChatLine('sys', '── That PDF has no text layer (looks scanned) — attached for reading, not editing ──');
+        }
+      }
+      _refreshAttachmentBar();
+    });
+    _simulateProgress(file.name, () => _markFileReady(file.name));
+  };
+  if (kind === 'image' || kind === 'pdf' || kind === 'docx') {
+    reader.readAsDataURL(file);
+  } else {
+    reader.readAsText(file);
+  }
+}
+
+// Push the uploaded file to the backend as Grace's active document. Returns the
+// backend response (incl. extracted text + editable flag) or null on failure.
+async function _uploadGraceDoc(name, mime, kind, content) {
+  try {
+    const resp = await fetch(`${API_BASE}/api/upload/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, mime, kind, content })
+    });
+    return await resp.json();
+  } catch (e) { console.warn('[upload] send to Grace failed', e); return null; }
+}
+
+function _buildFileItem(file, cat) {
+  const div = document.createElement('div');
+  div.className = 'upload-file-item loading type-' + cat;
+  div.id = 'upload-item-' + _safeId(file.name);
+
+  const top = document.createElement('div');
+  top.className = 'upload-file-top';
+
+  const icon = document.createElement('div');
+  icon.className = 'upload-file-icon';
+  icon.textContent = FILE_ICONS[cat];
+
+  const info = document.createElement('div');
+  info.className = 'upload-file-info';
+
+  const name = document.createElement('div');
+  name.className = 'upload-file-name';
+  name.textContent = file.name;
+
+  const meta = document.createElement('div');
+  meta.className = 'upload-file-meta';
+
+  const type = document.createElement('div');
+  type.className = 'upload-file-type';
+  type.textContent = file.name.split('.').pop().toUpperCase();
+
+  const size = document.createElement('div');
+  size.className = 'upload-file-size';
+  size.textContent = _fmtSize(file.size);
+
+  meta.appendChild(type);
+  meta.appendChild(size);
+  info.appendChild(name);
+  info.appendChild(meta);
+
+  const remove = document.createElement('div');
+  remove.className = 'upload-file-remove';
+  remove.textContent = '✕';
+  remove.onclick = () => uploadRemoveFile(file.name);
+
+  top.appendChild(icon);
+  top.appendChild(info);
+  top.appendChild(remove);
+
+  const progWrap = document.createElement('div');
+  progWrap.className = 'upload-progress-wrap';
+  progWrap.id = 'upload-prog-wrap-' + _safeId(file.name);
+
+  const progRow = document.createElement('div');
+  progRow.className = 'upload-progress-row';
+
+  const progLabel = document.createElement('div');
+  progLabel.className = 'upload-progress-label';
+  progLabel.textContent = 'Loading';
+
+  const progPct = document.createElement('div');
+  progPct.className = 'upload-progress-pct';
+  progPct.id = 'upload-prog-pct-' + _safeId(file.name);
+  progPct.textContent = '0%';
+
+  progRow.appendChild(progLabel);
+  progRow.appendChild(progPct);
+
+  const progTrack = document.createElement('div');
+  progTrack.className = 'upload-progress-track';
+
+  const progFill = document.createElement('div');
+  progFill.className = 'upload-progress-fill';
+  progFill.id = 'upload-prog-fill-' + _safeId(file.name);
+
+  progTrack.appendChild(progFill);
+  progWrap.appendChild(progRow);
+  progWrap.appendChild(progTrack);
+
+  const status = document.createElement('div');
+  status.className = 'upload-file-status';
+
+  const statusDot = document.createElement('div');
+  statusDot.className = 'upload-status-dot';
+
+  const statusText = document.createElement('div');
+  statusText.className = 'upload-file-status-text';
+  statusText.id = 'upload-status-text-' + _safeId(file.name);
+  statusText.textContent = 'Reading file...';
+
+  status.appendChild(statusDot);
+  status.appendChild(statusText);
+
+  div.appendChild(top);
+  div.appendChild(progWrap);
+  div.appendChild(status);
+
+  return div;
+}
+
+function _simulateProgress(name, onComplete) {
+  const sid  = _safeId(name);
+  const fill = document.getElementById('upload-prog-fill-' + sid);
+  const pct  = document.getElementById('upload-prog-pct-'  + sid);
+  const txt  = document.getElementById('upload-status-text-' + sid);
+  let p = 0;
+  const labels = ['Reading file...', 'Parsing content...', 'Indexing data...', 'Ready for analysis'];
+  clearInterval(_uploadProgress);
+  _uploadProgress = setInterval(() => {
+    p = Math.min(p + Math.random() * 18 + 4, 100);
+    if (fill) fill.style.width = p + '%';
+    if (pct)  pct.textContent  = Math.round(p) + '%';
+    if (txt)  txt.textContent  = labels[Math.floor((p/100)*3)];
+    if (p >= 100) {
+      clearInterval(_uploadProgress);
+      if (onComplete) onComplete();
+    }
+  }, 80);
+}
+
+function _markFileReady(name) {
+  const sid  = _safeId(name);
+  const item = document.getElementById('upload-item-' + sid);
+  const wrap = document.getElementById('upload-prog-wrap-' + sid);
+  const txt  = document.getElementById('upload-status-text-' + sid);
+  if (item) item.classList.replace('loading','ready');
+  if (wrap) wrap.style.display = 'none';
+  if (txt)  txt.textContent = 'Ready for analysis';
+}
+
+function _attachToChat(name) {
+  // Reflect the current set of attached files on the chat bar.
+  _refreshAttachmentBar();
+  addChatLine('sys', '── file attached: ' + name + ' ──');
+  // Open chat if not already open
+  const chat = document.getElementById('w-chat');
+  if (chat && (chat.style.display === 'none' || chat.style.display === '')) {
+    toggleWidget('w-chat');
+  }
+}
+
+// Detach a SINGLE file (the per-file ✕).
+function uploadRemoveFile(name) {
+  const item = document.getElementById('upload-item-' + _safeId(name));
+  if (item) item.remove();
+  fetch(`${API_BASE}/api/upload/remove`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  }).catch(() => {});
+  _refreshAttachmentBar();
+}
+
+// Detach ALL files (chat attachment bar ✕ / clear-all).
+function uploadClearFile(silent) {
+  _uploadedFile = null;
+  clearInterval(_uploadProgress);
+  document.getElementById('upload-file-list').innerHTML = '';
+  const bar = document.getElementById('chat-attachment-bar');
+  if (bar) bar.style.display = 'none';
+  // Tell the backend to drop all active documents too.
+  fetch(`${API_BASE}/api/upload/clear`, { method: 'POST' }).catch(() => {});
+  if (!silent) addChatLine('sys', '── files detached ──');
+}
+
+// Reflect how many files are attached on the chat attachment bar.
+function _refreshAttachmentBar() {
+  const list = document.getElementById('upload-file-list');
+  const items = list ? [...list.querySelectorAll('.upload-file-item')] : [];
+  const bar = document.getElementById('chat-attachment-bar');
+  const label = document.getElementById('chat-attachment-name');
+  if (!bar || !label) return;
+  if (!items.length) { bar.style.display = 'none'; return; }
+  const names = items.map(el => el.querySelector('.upload-file-name')?.textContent || '').filter(Boolean);
+  label.textContent = names.length === 1 ? names[0] : `${names[0]} (+${names.length - 1} more)`;
+  bar.style.display = 'block';
+}
+
+function _safeId(name) { return name.replace(/[^a-zA-Z0-9]/g, '_'); }
+
+/* ── Simulated AI responses based on file + message ── */
+function _getSimulatedResponse(userMsg, file) {
+  const msg  = userMsg.toLowerCase();
+  const name = file.name.toLowerCase();
+  const cat  = file.category;
+
+  if (msg.includes('summar')) {
+    if (cat === 'pdf')  return `Analysing "${file.name}"... This document appears to contain structured content across multiple sections. Key themes include operational procedures, data summaries, and reference material. A full summary would be generated once the API is connected, Sir.`;
+    if (cat === 'img')  return `Scanning image "${file.name}"... The file is a ${_fmtSize(file.size)} image. Visual analysis capabilities will be available once the vision API is connected. I can see it has been loaded successfully.`;
+    if (cat === 'data') return `Processing "${file.name}"... This data file contains structured records. I can see it loaded at ${_fmtSize(file.size)}. Full parsing and summary will be available with the API connected.`;
+    return `Reading "${file.name}"... The file contains text content. A detailed summary will be generated once the Anthropic API is connected, Sir.`;
+  }
+  if (msg.includes('translat')) {
+    return `Translation mode engaged for "${file.name}". Once the API is connected, I can translate this content to any language you specify. What language would you like, Sir?`;
+  }
+  if (msg.includes('key point') || msg.includes('main point') || msg.includes('highlight')) {
+    return `Extracting key points from "${file.name}"... This feature will be fully operational once the API is connected. The file has been read successfully at ${_fmtSize(file.size)}.`;
+  }
+  if (msg.includes('analys') || msg.includes('analy')) {
+    return `Analysis initiated for "${file.name}" (${file.name.split('.').pop().toUpperCase()}, ${_fmtSize(file.size)}). Full analysis capabilities will be available with the API connected, Sir. Standing by.`;
+  }
+  if (msg.includes('what') && (msg.includes('file') || msg.includes('contain') || msg.includes('in'))) {
+    return `"${file.name}" is a ${file.name.split('.').pop().toUpperCase()} file, ${_fmtSize(file.size)} in size. It has been loaded and indexed successfully. I can summarise, translate, extract key points, or analyse it once the API is connected.`;
+  }
+  // Generic fallback
+  return `Received your command regarding "${file.name}", Sir. This file is loaded and ready. Full AI processing will be available once the Anthropic API is connected. You can ask me to summarise, translate, extract key points, or analyse it.`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SECTION 14 — CODE PANEL
+   ════════════════════════════════════════════════════════════ */
+
+// Language detection map
+const CODE_LANG_MAP = {
+  js:'javascript', mjs:'javascript', ts:'javascript',
+  html:'htmlmixed', htm:'htmlmixed',
+  css:'css', scss:'css', less:'css',
+  py:'python', python:'python',
+  json:'javascript', json5:'javascript',
+  xml:'xml', svg:'xml',
+  md:'markdown', txt:'null'
+};
+const CODE_LANG_LABELS = {
+  javascript:'JS', htmlmixed:'HTML', css:'CSS',
+  python:'PY', xml:'XML', markdown:'MD', null:'TXT'
+};
+
+// Code tab store: [{ id, name, lang, cm }]
+let _codeTabs   = [];
+let _activeTabId = null;
+let _tabCounter  = 0;
+
+/* ── Tab management ── */
+function codeNewTab(name, content, lang) {
+  const id   = 'ct' + (++_tabCounter);
+  const fname = name || 'untitled_' + _tabCounter + '.js';
+  const mode  = lang || 'javascript';
+
+  // Create editor container
+  const edWrap = document.createElement('div');
+  edWrap.className = 'code-editor-instance';
+  edWrap.id = 'code-ed-' + id;
+  document.getElementById('code-editors').appendChild(edWrap);
+
+  let cm = null;
+  // Init CodeMirror with fallback
+  try {
+    if (typeof CodeMirror !== 'undefined') {
+      cm = CodeMirror(edWrap, {
+        value: content || _codeDefaultSnippet(mode),
+        mode: mode,
+        theme: 'dracula',
+        lineNumbers: true,
+        matchBrackets: true,
+        autoCloseBrackets: true,
+        styleActiveLine: true,
+        indentUnit: 2,
+        tabSize: 2,
+        indentWithTabs: false,
+        lineWrapping: false,
+        extraKeys: {
+          'Tab': cm => cm.execCommand('insertSoftTab'),
+          'Ctrl-/': cm => cm.execCommand('toggleComment'),
+        }
+      });
+
+      cm.on('cursorActivity', () => {
+        if (_activeTabId !== id) return;
+        const cur = cm.getCursor();
+        document.getElementById('code-hud-line').textContent = cur.line + 1;
+        document.getElementById('code-hud-col').textContent  = cur.ch + 1;
+      });
+    } else {
+      throw new Error('CodeMirror not loaded');
+    }
+  } catch (e) {
+    console.warn('CodeMirror failed to load, using fallback textarea:', e);
+    edWrap.innerHTML = `
+      <textarea class="code-fallback-textarea" style="width:100%;height:100%;background:#0d0d0d;color:#fff;font-family:'Share Tech Mono',monospace;font-size:13px;line-height:1.6;padding:10px;border:none;outline:none;resize:none;">${(content || _codeDefaultSnippet(mode)).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+    `;
+  }
+
+  const tab = { id, name: fname, lang: mode, cm };
+  _codeTabs.push(tab);
+  _renderTabBar();
+  codeSetActiveTab(id);
+  codeTermLog('info', 'New tab opened: ' + fname);
+  return tab;
+}
+
+function codeSetActiveTab(id) {
+  _activeTabId = id;
+
+  document.querySelectorAll('.code-editor-instance').forEach(el => el.classList.remove('active'));
+  const edEl = document.getElementById('code-ed-' + id);
+  if (edEl) edEl.classList.add('active');
+
+  document.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
+  const tabEl = document.getElementById('code-tab-' + id);
+  if (tabEl) tabEl.classList.add('active');
+
+  const tab = _codeTabs.find(t => t.id === id);
+  if (tab) {
+    document.getElementById('code-hud-lang').textContent = CODE_LANG_LABELS[tab.lang] || tab.lang.toUpperCase();
+    if (tab.cm && typeof tab.cm.getCursor === 'function') {
+      const cur = tab.cm.getCursor();
+      document.getElementById('code-hud-line').textContent = cur.line + 1;
+      document.getElementById('code-hud-col').textContent  = cur.ch + 1;
+      setTimeout(() => tab.cm.refresh(), 10);
+    } else {
+      document.getElementById('code-hud-line').textContent = '1';
+      document.getElementById('code-hud-col').textContent  = '1';
+    }
+  }
+}
+
+function codeCloseTab(id, e) {
+  if (e) e.stopPropagation();
+  const idx = _codeTabs.findIndex(t => t.id === id);
+  if (idx === -1) return;
+
+  // Remove editor DOM
+  const edEl = document.getElementById('code-ed-' + id);
+  if (edEl) edEl.remove();
+
+  _codeTabs.splice(idx, 1);
+
+  // Activate adjacent tab
+  if (_codeTabs.length > 0) {
+    const next = _codeTabs[Math.min(idx, _codeTabs.length - 1)];
+    codeSetActiveTab(next.id);
+  } else {
+    _activeTabId = null;
+    document.getElementById('code-hud-lang').textContent = '—';
+    document.getElementById('code-hud-line').textContent = '1';
+    document.getElementById('code-hud-col').textContent  = '1';
+  }
+  _renderTabBar();
+  codeTermLog('info', 'Tab closed.');
+}
+
+function _renderTabBar() {
+  const bar = document.getElementById('code-tab-bar');
+  bar.innerHTML = '';
+  _codeTabs.forEach(tab => {
+    const t = document.createElement('div');
+    t.className = 'code-tab' + (tab.id === _activeTabId ? ' active' : '');
+    t.id = 'code-tab-' + tab.id;
+
+    const nameSpan = document.createElement('span');
+    nameSpan.style.cssText = 'overflow:hidden;text-overflow:ellipsis;flex:1';
+    nameSpan.textContent = tab.name;
+
+    const langSpan = document.createElement('span');
+    langSpan.className = 'code-tab-lang';
+    langSpan.textContent = CODE_LANG_LABELS[tab.lang] || 'CODE';
+
+    const closeSpan = document.createElement('span');
+    closeSpan.className = 'code-tab-close';
+    closeSpan.textContent = '✕';
+    closeSpan.onclick = (e) => { e.stopPropagation(); codeCloseTab(tab.id, e); };
+
+    t.appendChild(nameSpan);
+    t.appendChild(langSpan);
+    t.appendChild(closeSpan);
+    t.onclick = () => codeSetActiveTab(tab.id);
+    bar.appendChild(t);
+  });
+  // Add + button
+  const add = document.createElement('div');
+  add.className = 'code-tab-add';
+  add.textContent = '+';
+  add.title = 'New tab';
+  add.onclick = () => codeNewTab();
+  bar.appendChild(add);
+  document.getElementById('code-hud-tabs').textContent = _codeTabs.length;
+}
+
+/* ── Active tab helpers ── */
+function _getActiveTab() { return _codeTabs.find(t => t.id === _activeTabId) || null; }
+
+function codeRefreshActive() {
+  const tab = _getActiveTab();
+  if (tab && tab.cm && typeof tab.cm.refresh === 'function') tab.cm.refresh();
+}
+
+function codeCopyActive() {
+  const tab = _getActiveTab();
+  if (!tab) return;
+  const value = tab.cm && typeof tab.cm.getValue === 'function' 
+    ? tab.cm.getValue() 
+    : tab.cm ? tab.cm.value : '';
+  navigator.clipboard.writeText(value).then(() => {
+    codeTermLog('success', 'Code copied to clipboard.');
+  });
+}
+
+function codeFormatActive() {
+  const tab = _getActiveTab();
+  if (!tab) { codeTermLog('error', 'No active tab to format.'); return; }
+  const cm = tab.cm;
+  if (!cm || typeof cm.getValue !== 'function') {
+    codeTermLog('error', 'Formatting not available in fallback mode.');
+    return;
+  }
+  cm.operation(() => {
+    for (let i = 0; i < cm.lineCount(); i++) cm.indentLine(i, 'smart');
+  });
+  codeTermLog('success', 'Code formatted.');
+}
+
+function codeClearTerminal() {
+  document.getElementById('code-terminal-output').innerHTML =
+    '<div class="code-term-line sys">── terminal cleared ──</div>';
+}
+
+function codeTermLog(type, msg) {
+  const out = document.getElementById('code-terminal-output');
+  if (!out) return;
+  const d = document.createElement('div');
+  d.className = 'code-term-line ' + type;
+  d.textContent = msg;
+  out.appendChild(d);
+  out.scrollTop = out.scrollHeight;
+}
+
+/* ── Ask GRACE ── */
+function codeAskKeydown(e) { if (e.key === 'Enter') codeAskGrace(); }
+
+function codeAskGrace() {
+  const inp = document.getElementById('code-ask-input');
+  const q   = inp.value.trim();
+  if (!q && !_getActiveTab()) return;
+
+  const tab  = _getActiveTab();
+  const query = q || 'Check this code for issues';
+  inp.value = '';
+
+  codeTermLog('info', 'You: ' + query);
+
+  // Build context from all open tabs
+  const allFiles = _codeTabs.map(t => t.name).join(', ');
+  setTimeout(() => {
+    const response = _graceCodeResponse(query, tab, _codeTabs);
+    codeTermLog('grace', response);
+    if (_codeTabs.length > 1) {
+      codeTermLog('info', 'Open files: ' + allFiles);
+    }
+  }, 700);
+}
+
+function _graceCodeResponse(query, activeTab, allTabs) {
+  const q = query.toLowerCase();
+  const fname = activeTab ? activeTab.name : 'your file';
+  const lang  = activeTab ? (CODE_LANG_LABELS[activeTab.lang] || activeTab.lang) : 'code';
+  const lines = activeTab ? activeTab.cm.lineCount() : 0;
+
+  if (q.includes('bug') || q.includes('error') || q.includes('issue') || q.includes('fix') || q.includes('debug')) {
+    return `Scanning ${fname} (${lines} lines, ${lang})... No critical syntax errors detected in simulation mode. Once the API is connected I will run a full static analysis and flag any bugs, unused variables, and logical errors with exact line numbers.`;
+  }
+  if (q.includes('summar') || q.includes('explain') || q.includes('what does')) {
+    return `${fname} is a ${lines}-line ${lang} file. In simulation mode I can see its structure but full explanation requires the API. Once connected I will break it down function by function in plain English.`;
+  }
+  if (q.includes('optimi') || q.includes('improve') || q.includes('refactor')) {
+    return `Analysing ${fname} for optimisation opportunities... Simulation mode active. With the API connected I will suggest performance improvements, redundant code removal, and modern syntax upgrades specific to ${lang}.`;
+  }
+  if (q.includes('cross') || q.includes('connect') || (q.includes('check') && allTabs.length > 1)) {
+    const names = allTabs.map(t => t.name).join(' and ');
+    return `Cross-referencing ${names}... I can see all ${allTabs.length} files are open. Once the API is connected I will trace imports, function calls, and variable references between them and flag any mismatches or missing connections.`;
+  }
+  if (q.includes('comment') || q.includes('document')) {
+    return `Ready to document ${fname}. Once the API is connected I will generate inline comments and a JSDoc/docstring header for every function in the file.`;
+  }
+  if (q.includes('test') || q.includes('unit test')) {
+    return `I can generate unit tests for ${fname} once the API is connected. I will produce full test coverage for every exported function using the appropriate testing framework for ${lang}.`;
+  }
+  // Generic
+  return `Received your query about ${fname} (${lang}, ${lines} lines). Simulation mode is active — full AI analysis will be available once the Anthropic API is connected. I have visibility into all ${allTabs.length} open file${allTabs.length !== 1 ? 's' : ''}.`;
+}
+
+/* ── Default snippet per language ── */
+function _codeDefaultSnippet(mode) {
+  const snippets = {
+    javascript: `// JavaScript · New File\n\nfunction greet(name) {\n  return \`Hello, \${name}!\`;\n}\n\nconsole.log(greet('GRACE'));`,
+    htmlmixed:  `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>New File</title>\n</head>\n<body>\n  <!-- Your content here -->\n</body>\n</html>`,
+    css:        `/* CSS · New File */\n\n:root {\n  --primary: #ffffff;\n  --bg: #000000;\n}\n\nbody {\n  margin: 0;\n  background: var(--bg);\n  color: var(--primary);\n}`,
+    python:     `# Python · New File\n\ndef greet(name: str) -> str:\n    return f"Hello, {name}!"\n\nif __name__ == "__main__":\n    print(greet("GRACE"))`,
+    xml:        `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <!-- Your content here -->\n</root>`,
+  };
+  return snippets[mode] || '// New file\n';
+}
+
+/* ── Auto-open from file upload ── */
+const CODE_EXTENSIONS = ['js','mjs','ts','html','htm','css','scss','py','json','xml','svg','md'];
+
+function codeOpenFromUpload(filename, content) {
+  const ext  = filename.split('.').pop().toLowerCase();
+  if (!CODE_EXTENSIONS.includes(ext)) return false;
+
+  const lang = CODE_LANG_MAP[ext] || 'javascript';
+
+  // Open code panel if not open
+  const panel = document.getElementById('w-code');
+  if (panel && (panel.style.display === 'none' || panel.style.display === '')) {
+    toggleWidget('w-code');
+  }
+
+  // Open file in new tab
+  setTimeout(() => {
+    codeNewTab(filename, content, lang);
+    codeTermLog('sys', '── file loaded from upload: ' + filename + ' ──');
+    addChatLine('sys', '── code file detected: ' + filename + ' — opened in Code Panel ──');
+  }, 200);
+
+  return true;
+}
+
+/* ── Directions card ── */
+function showDirectionsCard(info) {
+  if (!info) return;
+  document.getElementById('dc-origin').textContent = info.origin || '—';
+  document.getElementById('dc-dest').textContent = info.destination || '—';
+  document.getElementById('dc-eta').textContent = info.eta || '—';
+  document.getElementById('dc-dist').textContent = (info.distance_km != null ? info.distance_km + ' km' : '—');
+  const tr = document.getElementById('dc-traffic');
+  tr.textContent = info.delay || '';
+  tr.className = 'dc-traffic ' + (info.delay_level || 'light');
+  const lv = document.getElementById('dc-leave');
+  if (info.leave_by && info.arrive_by) {
+    lv.style.display = 'block';
+    lv.innerHTML = 'Leave by <b>' + info.leave_by + '</b> to arrive by ' + info.arrive_by;
+  } else lv.style.display = 'none';
+  const alts = document.getElementById('dc-alts');
+  if (info.alternatives && info.alternatives.length) {
+    alts.innerHTML = '<span class="dc-alts-lbl">Alternatives</span>' +
+      info.alternatives.map(a => `<div class="dc-alt"><i class="fa-solid fa-route"></i>${a.eta} · ${a.distance_km} km</div>`).join('');
+  } else alts.innerHTML = '';
+  document.getElementById('directions-card').style.display = 'block';
+}
+function hideDirectionsCard() {
+  document.getElementById('directions-card').style.display = 'none';
+}
+
+/* ════════════════════════════════════════════════════════════
+   DOCUMENT EDITOR — uploaded .txt/.docx opens here; Grace edits
+   it live (find/replace or full rewrite) and can spin off a new
+   downloadable document ("Document ready" toast).
+   ════════════════════════════════════════════════════════════ */
+let _docFmt = 'txt';
+let _docSyncTimer = null;
+
+function _docWordCount() {
+  const t = (document.getElementById('doc-editor').value || '').trim();
+  const n = t ? t.split(/\s+/).length : 0;
+  document.getElementById('doc-words').textContent = n;
+}
+
+// Open the editor with a document's contents.
+function openDocEditor(name, text, fmt) {
+  const w = document.getElementById('w-doc');
+  if (w && (w.style.display === 'none' || w.style.display === '')) toggleWidget('w-doc');
+  _docFmt = (fmt || 'txt').toLowerCase();
+  document.getElementById('doc-name').textContent = name || 'untitled';
+  document.getElementById('doc-fmt').textContent = _docFmt;
+  const ed = document.getElementById('doc-editor');
+  ed.value = (text != null ? text : '');
+  _docWordCount();
+  document.getElementById('doc-save-state').textContent = '';
+}
+
+// The operator typed — update the count and mirror to the backend (debounced)
+// so Grace always edits the latest version.
+function docOnInput() {
+  _docWordCount();
+  document.getElementById('doc-save-state').textContent = '…';
+  clearTimeout(_docSyncTimer);
+  _docSyncTimer = setTimeout(docSyncNow, 650);
+}
+
+async function docSyncNow() {
+  const text = document.getElementById('doc-editor').value || '';
+  try {
+    await fetch(`${API_BASE}/api/doc/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    document.getElementById('doc-save-state').textContent = 'synced';
+    setTimeout(() => { const s = document.getElementById('doc-save-state'); if (s) s.textContent = ''; }, 1200);
+  } catch (e) {
+    document.getElementById('doc-save-state').textContent = '';
+  }
+}
+
+// Grace replaced the document's text — apply it so native Ctrl+Z can undo it.
+// Using execCommand keeps the change on the browser's own undo stack.
+function applyDocReplace(name, text) {
+  const w = document.getElementById('w-doc');
+  if (w && (w.style.display === 'none' || w.style.display === '')) toggleWidget('w-doc');
+  if (name) document.getElementById('doc-name').textContent = name;
+  const ed = document.getElementById('doc-editor');
+  ed.focus();
+  let applied = false;
+  try {
+    ed.select();
+    applied = document.execCommand('insertText', false, text);
+  } catch (e) { applied = false; }
+  if (!applied) ed.value = text;   // fallback (loses one undo step, but always works)
+  _docWordCount();
+  document.getElementById('doc-save-state').textContent = 'edited ✓';
+  setTimeout(() => { const s = document.getElementById('doc-save-state'); if (s) s.textContent = ''; }, 1600);
+}
+
+// Download the CURRENT editor contents in its format (txt = local blob,
+// docx = backend renders it).
+async function docDownloadCurrent() {
+  const text = document.getElementById('doc-editor').value || '';
+  const name = (document.getElementById('doc-name').textContent || 'document').replace(/\.[^.]+$/, '');
+  // txt renders locally; docx/pdf need the backend to build the binary.
+  if (_docFmt === 'docx' || _docFmt === 'pdf') {
+    try {
+      const resp = await fetch(`${API_BASE}/api/doc/export`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, fmt: _docFmt, name })
+      });
+      if (!resp.ok) throw new Error('export failed');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name + '.' + _docFmt;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      addChatLine('sys', `── Couldn’t export the .${_docFmt} — saving as .txt instead ──`);
+      _downloadText(name + '.txt', text);
+    }
+  } else {
+    _downloadText(name + '.txt', text);
+  }
+}
+
+/* ── "Document ready" toast ── */
+let _docToastTimer = null;
+function showDocReadyToast(filename, url) {
+  document.getElementById('doc-toast-file').textContent = filename || 'document';
+  const dl = document.getElementById('doc-toast-dl');
+  dl.href = (url && url.startsWith('http')) ? url : (API_BASE + url);
+  dl.setAttribute('download', filename || 'document');
+  const t = document.getElementById('doc-toast');
+  t.classList.add('show');
+  clearTimeout(_docToastTimer);
+  _docToastTimer = setTimeout(hideDocToast, 18000);
+}
+function hideDocToast() {
+  document.getElementById('doc-toast').classList.remove('show');
+}
+
+/* ── Email draft / approve-before-send ── */
+let _emailAttachId = '';
+function showEmailDraft(to, subject, body, attachName, attachId) {
+  document.getElementById('email-to').value = to || '';
+  document.getElementById('email-subject').value = subject || '';
+  document.getElementById('email-body').value = body || '';
+  _emailAttachId = attachId || '';
+  const chip = document.getElementById('email-attach');
+  if (chip) {
+    if (attachName) { chip.textContent = '📎 ' + attachName; chip.style.display = 'block'; }
+    else { chip.textContent = ''; chip.style.display = 'none'; }
+  }
+  const note = document.getElementById('email-note');
+  if (note) note.textContent = 'Nothing sends until you click Send — edit above if needed.';
+  document.getElementById('email-approve-modal').style.display = 'flex';
+}
+function discardEmailDraft() {
+  document.getElementById('email-approve-modal').style.display = 'none';
+  addChatLine('sys', '── email draft discarded ──');
+}
+async function sendEmailDraft() {
+  const to = document.getElementById('email-to').value.trim();
+  const subject = document.getElementById('email-subject').value.trim();
+  const body = document.getElementById('email-body').value;
+  const note = document.getElementById('email-note');
+  if (!to) { if (note) note.textContent = 'Add a recipient first.'; return; }
+  if (note) note.textContent = 'Sending…';
+  try {
+    const res = await fetch(`${API_BASE}/api/email/send`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, subject, body, attach_id: _emailAttachId })
+    });
+    const d = await res.json();
+    if (d.ok) {
+      document.getElementById('email-approve-modal').style.display = 'none';
+      addChatLine('sys', `── email sent to ${to} ──`);
+    } else {
+      if (note) note.textContent = 'Send failed: ' + (d.error || 'unknown error');
+    }
+  } catch (e) {
+    if (note) note.textContent = 'Send failed — network error.';
+  }
+}
+
+/* ── Code edit diff / approval ── */
+let _pendingEditId = null;
+let _pendingEdit = null;   // { kind, filename, newContent } for uploaded-file edits
+
+function _downloadText(filename, text) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename || 'fixed.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function showCodeDiff(data) {
+  _pendingEditId = data.edit_id || null;
+  _pendingEdit = {
+    kind: data.kind || 'project',
+    filename: data.filename || data.path,
+    newContent: data.new_content || '',
+  };
+  document.getElementById('diff-file').textContent = data.path || 'file';
+  const sum = document.getElementById('diff-summary');
+  sum.textContent = data.summary || '';
+  sum.style.display = data.summary ? 'block' : 'none';
+
+  const body = document.getElementById('diff-body');
+  body.innerHTML = '';
+  (data.diff || []).forEach(raw => {
+    const line = (raw === '' ? ' ' : raw);
+    const div = document.createElement('div');
+    div.className = 'diff-line';
+    if (line.startsWith('+++') || line.startsWith('---')) div.classList.add('diff-fhdr');
+    else if (line.startsWith('@@')) div.classList.add('diff-hunk');
+    else if (line[0] === '+') div.classList.add('diff-add');
+    else if (line[0] === '-') div.classList.add('diff-del');
+    div.textContent = line;
+    body.appendChild(div);
+  });
+  document.getElementById('code-diff-modal').style.display = 'flex';
+  addChatLine('sys', '── Grace proposed a code change — review & Apply ──');
+}
+
+async function applyCodeEdit() {
+  if (!_pendingEditId) return closeCodeDiff();
+  const id = _pendingEditId;
+  const edit = _pendingEdit || {};
+
+  // Uploaded file: no disk path — "Apply" downloads the corrected file for him.
+  if (edit.kind === 'upload') {
+    _downloadText(edit.filename, edit.newContent);
+    fetch(`${API_BASE}/api/code/apply/${id}`, { method: 'POST' }).catch(() => {}); // clears the staged edit
+    addChatLine('sys', `── corrected ${edit.filename} downloaded ✓ — drop it back into your project ──`);
+    return closeCodeDiff();
+  }
+
+  // Project file: server writes it (after backing up the original).
+  try {
+    const r = await fetch(`${API_BASE}/api/code/apply/${id}`, { method: 'POST' });
+    if (r.ok) {
+      addChatLine('sys', '── change applied ✓ (original backed up) ──');
+    } else {
+      const e = await r.json().catch(() => ({}));
+      addChatLine('sys', `── apply failed: ${e.detail || 'unknown'} ──`);
+    }
+  } catch (e) { addChatLine('sys', '── apply failed — backend unreachable ──'); }
+  closeCodeDiff();
+}
+
+async function rejectCodeEdit() {
+  if (_pendingEditId) {
+    fetch(`${API_BASE}/api/code/reject/${_pendingEditId}`, { method: 'POST' }).catch(() => {});
+    addChatLine('sys', '── change rejected ──');
+  }
+  closeCodeDiff();
+}
+
+function closeCodeDiff() {
+  _pendingEditId = null;
+  _pendingEdit = null;
+  document.getElementById('code-diff-modal').style.display = 'none';
+}
+
+// Initialize SSE connection
+let sseReconnectDelay = 1000;
+let graceStream;
+let sseRetryTimer = null;
+
+function connectGraceStream() {
+  // Idempotent: never leave more than ONE live EventSource. A stale connection
+  // left open would receive its own full copy of every packet and play every
+  // audio chunk a second time — the "two voices" overlap. Always tear down any
+  // existing stream before opening a new one.
+  if (graceStream) {
+    try { graceStream.onerror = null; graceStream.close(); } catch (e) {}
+    graceStream = null;
+  }
+  graceStream = new EventSource(`${API_BASE}/api/workspace/stream`);
+
+  graceStream.onopen = () => {
+    console.log("[SSE] Core linkage established.");
+    sseReconnectDelay = 1000;
+    document.getElementById('statusTxt').textContent = 'System online · Radar Array Active';
+  };
+
+  graceStream.onmessage = function(event) {
+    const packet = JSON.parse(event.data);
+    console.log(`[GRACE Multiplexer] Syncing payload for: ${packet.target_widget}`);
+
+    const widgetMap = { 'WIDGET_CHAT': 'w-chat', 'WIDGET_SYS': 'w-sys', 'WIDGET_WEATHER': 'w-weather', 'WIDGET_KANBAN': 'w-kanban', 'WIDGET_CALENDAR': 'w-calendar', 'WIDGET_PROJECTS': 'w-projects' };
+    const targetId = widgetMap[packet.target_widget];
+    if (targetId) {
+      const el = document.getElementById(targetId);
+      if (el && (el.style.display === 'none' || el.style.display === '')) {
+        toggleWidget(targetId);
+      }
+    }
+
+    if ((packet.response_modality === 'hybrid' || packet.response_modality === 'voice_only') && packet.audio_url) {
+      const graceAudio = new Audio(`${API_BASE}${packet.audio_url}`);
+      graceAudio.play().catch(err => console.warn("Audio activation requires user gesture first."));
+    }
+
+    switch(packet.target_widget) {
+      case 'WIDGET_CHAT':
+        if (packet.data) {
+          if (packet.data.start && packet.data.stream_id) {
+            _speechStart(packet.data.stream_id);
+          } else if (packet.data.sentence !== undefined && packet.data.stream_id) {
+            _speechStoreSentence(packet.data.seq, packet.data.sentence);
+          } else if (packet.data.audio_chunk !== undefined && packet.data.stream_id) {
+            _speechEnqueue(packet.data.seq, packet.data.audio_chunk);
+          } else if (packet.data.delta && packet.data.stream_id) {
+            _speechNotice(packet.data.delta);
+          } else if (packet.data.done && packet.data.stream_id) {
+            _speech.done = true;
+            _speech.finalText = packet.data.message || '';
+            _speechFinalizeIfDone();
+          } else if (packet.data.message) {
+            addChatLine('grace', packet.data.message);
+          }
+        }
+        break;
+
+      case 'WIDGET_SYS':
+        if (packet.data && packet.data.diagnostics) {
+          const d = packet.data.diagnostics;
+          addChatLine('sys', `Platform: ${d.os_platform} | Core Status: ${d.cpu_status}`);
+          if (d.cpu_usage !== undefined) {
+            document.getElementById('cpuVal').textContent = d.cpu_usage + '%';
+            document.getElementById('cpuBar').style.width = d.cpu_usage + '%';
+          }
+          if (d.ram_usage !== undefined) {
+            document.getElementById('ramVal').textContent = d.ram_usage + '%';
+            document.getElementById('ramBar').style.width = d.ram_usage + '%';
+          }
+        }
+        break;
+
+      case 'WIDGET_WEATHER':
+        if (packet.data) renderWeather(packet.data);
+        break;
+
+      case 'WIDGET_KANBAN':
+        if (packet.data && packet.data.action === 'task_created') {
+          // The auto-toggle above opens the board if it was hidden (and that
+          // fires loadTasksFromBackend). If it was already open, refresh here
+          // so the new card shows up without a manual reload.
+          loadTasksFromBackend();
+          addChatLine('sys', `── TASK CREATED: ${packet.data.title || 'Untitled'} ──`);
+        } else if (packet.data && packet.data.action === 'task_deleted') {
+          // Reload so the deleted card disappears live in every open tab. If the
+          // detail modal was showing the deleted task, close it.
+          const goneId = 'api' + packet.data.task_id;
+          if (currentDetailTaskId === goneId) {
+            closeWidget('w-task-detail');
+            currentDetailTaskId = null;
+          }
+          loadTasksFromBackend();
+          addChatLine('sys', `── TASK DELETED: ${packet.data.title || 'Untitled'} ──`);
+        } else if (packet.data && packet.data.action === 'task_updated') {
+          // Reload so the card moves to its new column / reflects its new state
+          // live in every open tab.
+          loadTasksFromBackend();
+          addChatLine('sys', `── TASK UPDATED: ${packet.data.title || 'Untitled'} ──`);
+        }
+        break;
+
+      case 'WIDGET_CALENDAR':
+        if (packet.data && packet.data.action === 'event_created') {
+          calLoadFromBackend();
+          addChatLine('sys', `── EVENT ADDED: ${packet.data.title || 'Untitled'} on ${packet.data.date_key} ──`);
+        } else if (packet.data && packet.data.action === 'event_deleted') {
+          calLoadFromBackend();
+          addChatLine('sys', `── EVENT DELETED: ${packet.data.title || 'Untitled'} ──`);
+        } else if (packet.data && packet.data.action === 'event_updated') {
+          calLoadFromBackend();
+          addChatLine('sys', `── EVENT UPDATED: ${packet.data.title || 'Untitled'} ──`);
+        }
+        break;
+
+      case 'WIDGET_PROJECTS':
+        // Any project change (chat, widget, or another tab) refreshes the board.
+        loadProjects();
+        break;
+
+      case 'WIDGET_HABITS':
+        // Grace logged/added/removed a habit — open the widget if needed & refresh.
+        {
+          const hw = document.getElementById('w-habits');
+          if (hw && (hw.style.display === 'none' || hw.style.display === '')) toggleWidget('w-habits');
+          else loadHabits();
+        }
+        break;
+
+      case 'WIDGET_CONTROL':
+        // Grace opening/closing widgets on request.
+        if (packet.data) {
+          const act = packet.data.action;
+          if (act === 'close_all') {
+            closeAllWidgets();
+            addChatLine('sys', '── WIDGETS CLOSED ──');
+          } else if (act === 'close' && packet.data.widget_id) {
+            closeWidget(packet.data.widget_id);
+          } else if (act === 'open' && packet.data.widget_id) {
+            const el = document.getElementById(packet.data.widget_id);
+            if (el && el.style.display !== 'block') toggleWidget(packet.data.widget_id);
+          }
+        }
+        break;
+
+      case 'WIDGET_CODE':
+        if (packet.data && packet.data.action === 'open_file' && packet.data.filename) {
+          // Grace opened a project file for reading/debugging — show it.
+          const fn = packet.data.filename;
+          const ext = fn.split('.').pop().toLowerCase();
+          const lang = CODE_LANG_MAP[ext] || 'null';
+          const panel = document.getElementById('w-code');
+          if (panel && (panel.style.display === 'none' || panel.style.display === '')) {
+            toggleWidget('w-code');
+          }
+          setTimeout(() => {
+            codeNewTab(fn, packet.data.content || '', lang);
+            addChatLine('sys', `── Grace opened ${fn} in the Code Panel ──`);
+          }, 200);
+        } else if (packet.data && packet.data.action === 'propose_edit') {
+          // Grace staged a fix — show the diff for approval.
+          showCodeDiff(packet.data);
+        }
+        break;
+
+      case 'WIDGET_MAP':
+        if (packet.data && packet.data.action === 'pin'
+            && typeof packet.data.lat === 'number' && typeof packet.data.lon === 'number') {
+          // Grace dropping a recon pin (e.g. a Shodan lookup location).
+          const mp = document.getElementById('w-map');
+          if (mp && (mp.style.display === 'none' || mp.style.display === '')) toggleWidget('w-map');
+          setTimeout(() => {
+            if (!window._leafletMap) return;
+            const ll = [packet.data.lat, packet.data.lon];
+            makeGlowMarker(ll, packet.data.title || 'Target').addTo(window._leafletMap).openPopup();
+            window._leafletMap.flyTo(ll, 9, { duration: 1.4 });
+          }, 250);
+        } else if (packet.data && packet.data.action === 'route' && Array.isArray(packet.data.points)) {
+          // Grace drawing a driving route with start/end markers.
+          const mp = document.getElementById('w-map');
+          if (mp && (mp.style.display === 'none' || mp.style.display === '')) toggleWidget('w-map');
+          setTimeout(() => {
+            if (!window._leafletMap || !window.L) return;
+            // Clear any previous route + its markers.
+            if (window._routeLayer) { window._leafletMap.removeLayer(window._routeLayer); }
+            window._routeLayer = L.layerGroup().addTo(window._leafletMap);
+            // Alternatives first (dim), so the primary draws on top.
+            (packet.data.alts || []).forEach(alt => {
+              if (Array.isArray(alt) && alt.length) {
+                window._routeLayer.addLayer(L.polyline(alt, { color: '#7a8aa0', weight: 4, opacity: 0.5, dashArray: '6 8' }));
+              }
+            });
+            const line = L.polyline(packet.data.points, { color: '#00d4ff', weight: 5, opacity: 0.9 });
+            window._routeLayer.addLayer(line);
+            // Paint congested stretches ON the route (orange = moderate, red = heavy),
+            // so you can see exactly where the slowdown is — not just a number.
+            (packet.data.traffic_segments || []).forEach(seg => {
+              if (Array.isArray(seg.points) && seg.points.length > 1) {
+                const col = seg.level === 'heavy' ? '#ff3b30' : '#ff9f1a';
+                window._routeLayer.addLayer(L.polyline(seg.points, { color: col, weight: 8, opacity: 0.95 }));
+              }
+            });
+            const o = packet.data.origin, d = packet.data.destination;
+            if (o) window._routeLayer.addLayer(makeGlowMarker([o.lat, o.lon], 'Start · ' + (o.name || '')));
+            if (d) window._routeLayer.addLayer(makeGlowMarker([d.lat, d.lon], 'End · ' + (d.name || '')).openPopup());
+            try { window._leafletMap.fitBounds(line.getBounds(), { padding: [40, 40] }); } catch (e) {}
+            // Switch on the live traffic overlay so surrounding congestion shows too.
+            if (!trafficOn) { try { toggleTraffic(); } catch (e) {} }
+          }, 260);
+          // Pop the details card so he sees ETA/distance/traffic at a glance.
+          showDirectionsCard(packet.data.info);
+        }
+        break;
+
+      case 'WIDGET_DOC':
+        if (packet.data && packet.data.action === 'open') {
+          // Uploaded document — load it into the editor.
+          openDocEditor(packet.data.name, packet.data.text, packet.data.fmt);
+        } else if (packet.data && packet.data.action === 'replace') {
+          // Grace edited the open document — apply it live (undoable).
+          applyDocReplace(packet.data.name, packet.data.text || '');
+        } else if (packet.data && packet.data.action === 'ready') {
+          // Grace generated a new document — pop the download toast.
+          showDocReadyToast(packet.data.filename, packet.data.url);
+        }
+        break;
+
+      case 'WIDGET_EMAIL':
+        if (packet.data && packet.data.action === 'draft') {
+          // Grace drafted an email — show it for approval (nothing sends yet).
+          showEmailDraft(packet.data.to, packet.data.subject, packet.data.body,
+                         packet.data.attach_name, packet.data.attach_id);
+        }
+        break;
+    }
+  };
+
+  graceStream.onerror = function(err) {
+    console.error(`[SSE] Link severed. Retrying in ${sseReconnectDelay}ms...`);
+    document.getElementById('statusTxt').textContent = 'Link severed - Attempting reconnect...';
+    try { graceStream.onerror = null; graceStream.close(); } catch (e) {}
+    graceStream = null;
+
+    // Collapse any pending retry into a single timer so overlapping errors
+    // can't spawn multiple parallel connections.
+    if (sseRetryTimer) clearTimeout(sseRetryTimer);
+    sseRetryTimer = setTimeout(() => {
+      sseRetryTimer = null;
+      connectGraceStream();
+      sseReconnectDelay = Math.min(sseReconnectDelay * 1.5, 30000);
+    }, sseReconnectDelay);
+  };
+}
+
+/* System Warmup for Audio & Global Context */
+let systemInteracted = false;
+function warmupAudio() {
+  if (systemInteracted) return;
+  const context = new (window.AudioContext || window.webkitAudioContext)();
+  if (context.state === 'suspended') context.resume();
+  
+  systemInteracted = true;
+  document.getElementById('statusTxt').textContent = 'System online - Neural Engine Primed';
+  console.log("[System] Audio User Gesture Requirements Satisfied.");
+}
+
+document.addEventListener('mousedown', warmupAudio, { once: true });
+document.addEventListener('keydown', warmupAudio, { once: true });
+
+connectGraceStream();
+
+// Expose functions to global scope for inline event handlers
+window.toggleWidget = toggleWidget;
+window.closeWidget = closeWidget;
+window.dragStart = dragStart;
+window.openTaskDetail = openTaskDetail;
+window.openNewTaskModal = openNewTaskModal;
+window.closeNewTaskModal = closeNewTaskModal;
+window.submitNewTask = submitNewTask;
+window.togglePlay = togglePlay;
+window.prevTrack = prevTrack;
+window.nextTrack = nextTrack;
+window.toggleShuffle = toggleShuffle;
+window.scrub = scrub;
+window.sendMsg = sendMsg;
+window.sendFromBtn = sendFromBtn;
+window.handleVoiceCommand = handleVoiceCommand;
+window.toggleVoice = toggleVoice;
+window.initMapEngine = initMapEngine;
+window.setLayer = setLayer;
+window.toggleTraffic = toggleTraffic;
+window.mapRotateLeft = mapRotateLeft;
+window.mapRotateRight = mapRotateRight;
+window.mapResetBearing = mapResetBearing;
+window.mapZoomIn = mapZoomIn;
+window.mapZoomOut = mapZoomOut;
+window.goToMe = goToMe;
+window.searchLocation = searchLocation;
+window.calPrevMonth = calPrevMonth;
+window.calNextMonth = calNextMonth;
+window.calAddEvent = calAddEvent;
+window.calAddEventBtn = calAddEventBtn;
+window.calSelectDay = calSelectDay;
+window.uploadDragOver = uploadDragOver;
+window.uploadDragLeave = uploadDragLeave;
+window.uploadDrop = uploadDrop;
+window.uploadFileSelected = uploadFileSelected;
+window.uploadClearFile = uploadClearFile;
+window.uploadRemoveFile = uploadRemoveFile;
+window.codeNewTab = codeNewTab;
+window.codeSetActiveTab = codeSetActiveTab;
+window.codeCloseTab = codeCloseTab;
+window.codeRefreshActive = codeRefreshActive;
+window.codeCopyActive = codeCopyActive;
+window.codeFormatActive = codeFormatActive;
+window.codeClearTerminal = codeClearTerminal;
+window.codeAskKeydown = codeAskKeydown;
+window.codeAskGrace = codeAskGrace;
+window.onDragOver = onDragOver;
+window.onDragLeave = onDragLeave;
+window.onDrop = onDrop;
+window.API_BASE = API_BASE;
+// Document editor
+window.openDocEditor = openDocEditor;
+window.docOnInput = docOnInput;
+window.docDownloadCurrent = docDownloadCurrent;
+window.applyDocReplace = applyDocReplace;
+window.showDocReadyToast = showDocReadyToast;
+window.hideDocToast = hideDocToast;
+window.showEmailDraft = showEmailDraft;
+window.sendEmailDraft = sendEmailDraft;
+window.discardEmailDraft = discardEmailDraft;
+window.hideDirectionsCard = hideDirectionsCard;
+window.showDirectionsCard = showDirectionsCard;
+// Habits
+window.loadHabits = loadHabits;
+window.habToggle = habToggle;
+window.habAdd = habAdd;
+window.habDelete = habDelete;
+window.habAddKey = habAddKey;
+</script>
+</body>
+</html>

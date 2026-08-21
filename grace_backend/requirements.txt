@@ -1,0 +1,26 @@
+# Grace backend — production dependencies (pinned to the working local versions).
+fastapi==0.109.0
+uvicorn[standard]==0.30.6
+pydantic==2.13.4
+SQLAlchemy==2.0.51
+httpx==0.28.1
+python-dotenv==1.0.0
+python-multipart==0.0.6
+psutil==5.9.6
+
+# AI + voice
+google-genai==2.12.1
+edge-tts==7.2.8
+
+# Documents (create/edit)
+python-docx==1.2.0
+pypdf==6.16.0
+fpdf2==2.8.8
+
+# Cloud database (Supabase Postgres) — used when DATABASE_URL is set
+psycopg[binary]==3.3.4
+
+# Google (Gmail + Calendar, read-only)
+google-auth==2.55.2
+google-auth-oauthlib==1.4.0
+google-api-python-client==2.198.0

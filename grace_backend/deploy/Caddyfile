@@ -1,0 +1,21 @@
+# Grace reverse proxy — Caddy gives automatic HTTPS (free Let's Encrypt cert)
+# and streams Server-Sent Events immediately (flush_interval -1), which Grace's
+# real-time push needs.
+#
+# Replace the domain below with YOUR domain — e.g. a free DuckDNS subdomain
+# (grace-yourname.duckdns.org) pointed at this VM's public IP. Caddy will fetch
+# the TLS certificate on first start automatically.
+
+your-domain.duckdns.org {
+    reverse_proxy 127.0.0.1:8000 {
+        flush_interval -1
+    }
+}
+
+# ── No domain yet? For a quick HTTP-only test, comment out the block above and
+#    uncomment this one (no HTTPS, so use only for a first smoke test):
+# :80 {
+#     reverse_proxy 127.0.0.1:8000 {
+#         flush_interval -1
+#     }
+# }

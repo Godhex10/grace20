@@ -14,7 +14,22 @@ from datetime import datetime, timezone, timedelta
 logger = logging.getLogger(__name__)
 
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # grace_backend
-TOKEN_PATH = os.path.join(_HERE, "google_token.json")
+
+
+def _token_path() -> str:
+    """Prefer a token in the per-user config dir (packaged app) if present,
+    otherwise the one beside the code (dev)."""
+    try:
+        from services import appconfig
+        cfg = os.path.join(appconfig.config_dir(), "google_token.json")
+        if os.path.exists(cfg):
+            return cfg
+    except Exception:
+        pass
+    return os.path.join(_HERE, "google_token.json")
+
+
+TOKEN_PATH = _token_path()
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",   # read + archive/mark-read/label/trash
     "https://www.googleapis.com/auth/gmail.send",

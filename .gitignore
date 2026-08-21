@@ -2,6 +2,8 @@
 .env
 *.env
 !*.env.example
+GRACE_SETUP_KEYS.txt
+*_KEYS.txt
 grace_backend/.env
 google_token.json
 grace_backend/google_token.json
@@ -25,8 +27,13 @@ env/
 .grace/
 grace-backups/
 
-# ── Logs ──────────────────────────────────────────────────────────────────
+# ── Logs / build output text ──────────────────────────────────────────────
 *.log
+build_log.txt
+build_onefile_log.txt
+
+# ── Generated TTS audio cache (runtime, not source) ───────────────────────
+grace_backend/static/audio/
 
 # ── Editor / OS / build artifacts ─────────────────────────────────────────
 .claude/settings.local.json
@@ -37,3 +44,10 @@ Thumbs.db
 
 # ── Large / legacy binaries (regeneratable, not needed in the repo) ────────
 grace_backend/piper_voices/
+
+# ── PyInstaller build output (regeneratable from the .spec files) ──────────
+build/
+dist/
+build_onefile/
+dist_onefile/
+*.manifest

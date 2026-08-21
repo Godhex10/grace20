@@ -1331,6 +1331,46 @@ body.kanban-active .stage {
 .email-btn.send { border:1px solid rgba(255,159,26,0.5); color:#ffcf8a; background:rgba(255,159,26,0.14); }
 .email-btn.send:hover { border-color:rgba(255,159,26,0.85); background:rgba(255,159,26,0.26); box-shadow:0 0 12px rgba(255,159,26,0.3); }
 
+/* ── OS action approval card (desktop) ── */
+#os-action-modal {
+  display:none; position:fixed; inset:0; z-index:212;
+  background:rgba(0,0,0,0.6); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center;
+}
+.os-panel {
+  width:min(640px, 92vw); max-height:88vh; display:flex; flex-direction:column;
+  background:linear-gradient(135deg, rgba(20,20,20,0.97), rgba(8,8,8,0.97));
+  border:1px solid rgba(255,255,255,0.18); border-radius:6px; overflow:hidden;
+  box-shadow:0 24px 70px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.os-head {
+  display:flex; align-items:center; gap:9px; padding:10px 14px;
+  background:linear-gradient(90deg, rgba(90,180,255,0.14), rgba(100,100,100,0.02));
+  border-bottom:1px solid rgba(255,255,255,0.14);
+}
+.os-dot { width:6px; height:6px; border-radius:50%; background:#5ab4ff; box-shadow:0 0 8px #5ab4ff; flex-shrink:0; }
+.os-title { flex:1; font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:1px; color:rgba(255,255,255,0.9); text-transform:uppercase; }
+.os-close { width:18px; height:18px; border:1px solid rgba(255,255,255,0.2); border-radius:3px; background:rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:10px; color:rgba(255,255,255,0.5); transition:all 0.15s; }
+.os-close:hover { background:rgba(255,71,87,0.18); border-color:rgba(255,71,87,0.6); color:#ff4757; }
+.os-body { padding:14px; display:flex; flex-direction:column; gap:6px; overflow:auto; }
+.os-label { font-family:'Share Tech Mono',monospace; font-size:8px; letter-spacing:1.5px; text-transform:uppercase; color:rgba(255,255,255,0.4); }
+.os-detail {
+  margin:0; max-height:320px; overflow:auto; white-space:pre-wrap; word-break:break-word;
+  background:rgba(0,0,0,0.45); border:1px solid rgba(90,180,255,0.22); border-radius:4px;
+  padding:10px 12px; color:rgba(210,235,255,0.95);
+  font-family:'Share Tech Mono','Consolas',monospace; font-size:12px; line-height:1.5;
+}
+.os-path { font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:0.5px; color:rgba(255,255,255,0.45); word-break:break-all; }
+.os-actions { display:flex; align-items:center; gap:10px; padding:11px 14px; border-top:1px solid rgba(255,255,255,0.14); background:rgba(5,5,5,0.6); }
+.os-trust { flex:1; display:flex; align-items:center; gap:6px; font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:0.5px; color:rgba(255,255,255,0.5); cursor:pointer; user-select:none; }
+.os-trust input { accent-color:#5ab4ff; cursor:pointer; }
+.os-btn { font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1px; text-transform:uppercase; padding:7px 16px; border-radius:4px; cursor:pointer; transition:all 0.15s; user-select:none; }
+.os-btn.reject { border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.55); background:rgba(255,255,255,0.03); }
+.os-btn.reject:hover { border-color:rgba(255,71,87,0.6); color:#ff4757; background:rgba(255,71,87,0.1); }
+.os-btn.apply { border:1px solid rgba(90,180,255,0.5); color:#bfe3ff; background:rgba(90,180,255,0.16); }
+.os-btn.apply:hover { border-color:rgba(90,180,255,0.85); background:rgba(90,180,255,0.28); box-shadow:0 0 12px rgba(90,180,255,0.3); }
+.os-note { padding:0 14px 10px; font-family:'Share Tech Mono',monospace; font-size:9px; color:rgba(255,159,26,0.85); letter-spacing:0.5px; min-height:12px; }
+
 /* ══════════════════════════════════════════
    DIRECTIONS CARD (draggable widget — matches the dashboard)
    ══════════════════════════════════════════ */

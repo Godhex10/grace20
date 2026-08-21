@@ -29,6 +29,7 @@ from services import directions
 from services import documents
 from services import habits as habit_service
 from services import google_integration
+from services import os_control
 from services.briefing import compose_briefing
 from services.weekly_review import compose_weekly_review
 from routers.voice import register_speech
@@ -2061,6 +2062,93 @@ async def _create_document_from_tool(args: dict, db) -> str:
             "up top. Click it to save the file.")
 
 
+def _build_desktop_tool():
+    """OS-control tools — only offered in the desktop app (GRACE_DESKTOP=1)."""
+    return genai_types.Tool(
+        function_declarations=[
+            genai_types.FunctionDeclaration(
+                name="open_path",
+                description=(
+                    "Open a file or folder on the operator's computer with its default "
+                    "app / File Explorer. Use for 'open my Downloads folder', 'open "
+                    "report.pdf', 'show me that file'. Accepts ~, %VARS%, and absolute "
+                    "paths. This just opens it — safe, no confirmation needed."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "path": genai_types.Schema(type=genai_types.Type.STRING, description="File or folder path (e.g. '~/Downloads', 'C:/Users/me/report.pdf')."),
+                    },
+                    required=["path"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="list_directory",
+                description=(
+                    "List the files and folders inside a directory on his computer. Use "
+                    "to see what's in a folder before acting. Read-only, safe."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "path": genai_types.Schema(type=genai_types.Type.STRING, description="Folder path (default his home folder)."),
+                    },
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="read_local_file",
+                description=(
+                    "Read the text contents of a file on his computer (so you can look at "
+                    "or edit it). Read-only, safe. For big files you get the first part."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "path": genai_types.Schema(type=genai_types.Type.STRING, description="File path to read."),
+                    },
+                    required=["path"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="write_local_file",
+                description=(
+                    "Create or overwrite a file on his computer with the given text. Use "
+                    "to save/edit a local file. This MUTATES his disk, so it pops an "
+                    "Apply/Reject card for him to approve first (unless the folder is "
+                    "already trusted). An existing file is backed up (.grace.bak) before "
+                    "overwrite. Put the FULL final contents in `content`."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "path":    genai_types.Schema(type=genai_types.Type.STRING, description="File path to write."),
+                        "content": genai_types.Schema(type=genai_types.Type.STRING, description="The complete text to write into the file."),
+                    },
+                    required=["path", "content"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="run_command",
+                description=(
+                    "Run a shell command on his computer (developer automation — e.g. "
+                    "'git pull', 'npm install', start a dev server, open an app). This can "
+                    "do anything, so it pops an Apply/Reject card for him to approve first "
+                    "(unless the working folder is trusted). Keep commands precise. You "
+                    "get stdout/stderr and the exit code back."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "command": genai_types.Schema(type=genai_types.Type.STRING, description="The exact command line to run."),
+                        "cwd":     genai_types.Schema(type=genai_types.Type.STRING, description="Optional folder to run it in."),
+                    },
+                    required=["command"],
+                ),
+            ),
+        ]
+    )
+
+
 def _build_google_tool():
     return genai_types.Tool(
         function_declarations=[
@@ -2384,6 +2472,91 @@ async def _check_availability_from_tool(args: dict, db) -> str:
     return f"Not fully free {res.get('window','')} — you've got: {items}."
 
 
+# ── Desktop OS-control handlers (GRACE_DESKTOP only) ─────────────────────────
+async def _open_path_from_tool(args: dict, db) -> str:
+    res = os_control.open_path(args.get("path") or "")
+    if "error" in res:
+        return res["error"]
+    what = "folder" if res.get("kind") == "folder" else "file"
+    return f"Opened the {what}: {res['opened']}"
+
+
+async def _list_directory_from_tool(args: dict, db) -> str:
+    res = os_control.list_directory(args.get("path") or "~")
+    if "error" in res:
+        return res["error"]
+    ents = res.get("entries", [])
+    if not ents:
+        return f"{res['path']} is empty."
+    lines = [f"{res['path']} ({res.get('count', len(ents))} items):"]
+    for e in ents[:60]:
+        lines.append(f"  {'[dir] ' if e['dir'] else '      '}{e['name']}")
+    return "\n".join(lines)
+
+
+async def _read_local_file_from_tool(args: dict, db) -> str:
+    res = os_control.read_local_file(args.get("path") or "")
+    if "error" in res:
+        return res["error"]
+    tail = "\n…(truncated)" if res.get("truncated") else ""
+    return f"Contents of {res['path']}:\n\n{res['content']}{tail}"
+
+
+def _fmt_run_result(res: dict) -> str:
+    if "error" in res:
+        return f"Command failed: {res['error']}"
+    out = (res.get("stdout") or "").strip()
+    err = (res.get("stderr") or "").strip()
+    head = f"Command finished (exit {res.get('code')})."
+    if out:
+        head += f"\n\nOutput:\n{out[:1500]}"
+    if err and not res.get("ok"):
+        head += f"\n\nErrors:\n{err[:800]}"
+    return head
+
+
+async def _write_local_file_from_tool(args: dict, db) -> str:
+    path = (args.get("path") or "").strip()
+    content = args.get("content") or ""
+    if not path:
+        return "I need a file path to write to, Boss."
+    # Trusted folder → write immediately; otherwise stage for his approval.
+    if os_control.is_trusted(path):
+        res = os_control.run_now("write_file", {"path": path, "content": content})
+        if "error" in res:
+            return f"Couldn't write it: {res['error']}"
+        bk = " (backed up the old one)" if res.get("backup") else ""
+        return f"Saved {res['path']} ({res['bytes']} bytes){bk}."
+    aid = os_control.stage("write_file", {"path": path, "content": content})
+    preview = content if len(content) <= 800 else content[:800] + "\n…"
+    await push_workspace_update("WIDGET_OSACTION", {
+        "action": "confirm", "id": aid, "kind": "write_file",
+        "title": "Write file", "path": os_control.expand(path), "preview": preview,
+    })
+    return (f"That'll write to {os_control.expand(path)} — I've put an Apply/Reject "
+            "card up top for you. Nothing touches the disk until you approve.")
+
+
+async def _run_command_from_tool(args: dict, db) -> str:
+    command = (args.get("command") or "").strip()
+    cwd = (args.get("cwd") or "").strip()
+    if not command:
+        return "What command should I run, Boss?"
+    # Trusted working folder → run immediately; otherwise stage for his approval.
+    if cwd and os_control.is_trusted(cwd):
+        res = os_control.run_now("run_command", {"command": command, "cwd": cwd})
+        return _fmt_run_result(res)
+    aid = os_control.stage("run_command", {"command": command, "cwd": cwd})
+    where = f"\nin {os_control.expand(cwd)}" if cwd else ""
+    await push_workspace_update("WIDGET_OSACTION", {
+        "action": "confirm", "id": aid, "kind": "run_command",
+        "title": "Run command", "command": command,
+        "cwd": os_control.expand(cwd) if cwd else "",
+    })
+    return (f"Ready to run `{command}`{where} — I've put an Apply/Reject card up top. "
+            "It won't run until you approve.")
+
+
 async def _get_directions_from_tool(args: dict, db) -> str:
     if not directions.is_configured():
         return ("Directions aren't set up yet, Boss — add a TOMTOM_API_KEY to the .env "
@@ -2605,6 +2778,8 @@ async def _run_reasoning_loop(system_persona, user_text, stream_id, allow_search
     tools.append(_build_habit_tool())
     if google_integration.is_connected():
         tools.append(_build_google_tool())
+    if os_control.is_enabled():          # desktop app only — never on the cloud
+        tools.append(_build_desktop_tool())
     model = model_override or (GRACE_CODE_MODEL if deep else GRACE_MODEL)
     config = genai_types.GenerateContentConfig(
         system_instruction=system_persona,
@@ -2725,6 +2900,16 @@ async def _run_reasoning_loop(system_persona, user_text, stream_id, allow_search
                 result_text = await _cancel_calendar_event_from_tool(dict(fc.args or {}), db)
             elif fc.name == "check_availability":
                 result_text = await _check_availability_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "open_path":
+                result_text = await _open_path_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "list_directory":
+                result_text = await _list_directory_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "read_local_file":
+                result_text = await _read_local_file_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "write_local_file":
+                result_text = await _write_local_file_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "run_command":
+                result_text = await _run_command_from_tool(dict(fc.args or {}), db)
             else:
                 result_text = f"Unknown tool '{fc.name}'."
             response_parts.append(
@@ -2881,6 +3066,19 @@ async def process_user_intent(payload: CommandInput, db: Session = Depends(get_d
                 "manage_email with a precise Gmail query. "
                 "Summarise mail like a sharp assistant; never dump raw headers."
                 if google_integration.is_connected() else ""
+            )
+            desktop_note = (
+                " You're running as his DESKTOP APP, so you can act on his actual computer. "
+                "Safe, instant tools: open_path (open a file/folder in Explorer/its app), "
+                "list_directory, and read_local_file. Mutating tools need his one-tap OK: "
+                "write_local_file (create/save/edit a file) and run_command (developer "
+                "automation — git, npm, start apps/servers/XAMPP). For those two an "
+                "Apply/Reject card appears; say it's up for approval — never claim it's done "
+                "until it actually runs. When he points you at a REAL path on his machine, "
+                "use these local tools (not the read-only project-code tools). To edit a "
+                "local file: read_local_file first, then write_local_file with the full new "
+                "text."
+                if os_control.is_enabled() else ""
             )
             convo_note = conversation_memory.recent_memories_text(db)
             reminder_note = _build_reminder_snapshot(db)
@@ -3065,6 +3263,7 @@ async def process_user_intent(payload: CommandInput, db: Session = Depends(get_d
                 f"{project_note}"
                 f"{habit_note}"
                 f"{google_note}"
+                f"{desktop_note}"
                 f"{reminder_note}"
                 f"{doc_note}"
                 f"{deep_note}"

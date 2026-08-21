@@ -21,7 +21,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/comment/comment.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@200;300;400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./styles.css?v=20260821a">
+<link rel="stylesheet" href="./styles.css?v=20260821b">
 </head>
 <body>
 
@@ -609,6 +609,28 @@
       <div class="email-btn discard" onclick="discardEmailDraft()">Discard</div>
       <div class="email-btn send" onclick="sendEmailDraft()">➤ Send</div>
     </div>
+  </div>
+</div>
+
+<!-- ══ OS ACTION CARD (desktop: approve run-command / write-file) ══ -->
+<div id="os-action-modal">
+  <div class="os-panel">
+    <div class="os-head">
+      <div class="os-dot"></div>
+      <div class="os-title" id="os-title">⚙ Approve action</div>
+      <div class="os-close" onclick="rejectOsAction()">✕</div>
+    </div>
+    <div class="os-body">
+      <div class="os-label" id="os-sub">Command</div>
+      <pre class="os-detail" id="os-detail"></pre>
+      <div class="os-path" id="os-path"></div>
+    </div>
+    <div class="os-actions">
+      <label class="os-trust"><input type="checkbox" id="os-trust"> Trust this folder for 1 hour</label>
+      <div class="os-btn reject" onclick="rejectOsAction()">Reject</div>
+      <div class="os-btn apply" id="os-apply-btn" onclick="applyOsAction()">▶ Apply</div>
+    </div>
+    <div class="os-note" id="os-note"></div>
   </div>
 </div>
 
@@ -3205,6 +3227,68 @@ async function sendEmailDraft() {
   }
 }
 
+/* ── Desktop OS action approval (run command / write file) ── */
+let _osActionId = '';
+function showOsAction(d) {
+  _osActionId = d.id || '';
+  const isCmd = d.kind === 'run_command';
+  document.getElementById('os-title').textContent = isCmd ? '⚙ Run command' : '💾 Write file';
+  document.getElementById('os-sub').textContent = isCmd ? 'Command' : 'File contents';
+  document.getElementById('os-detail').textContent = isCmd ? (d.command || '') : (d.preview || '');
+  document.getElementById('os-path').textContent = isCmd ? (d.cwd ? ('in ' + d.cwd) : '') : (d.path || '');
+  document.getElementById('os-apply-btn').textContent = isCmd ? '▶ Run' : '💾 Write';
+  document.getElementById('os-trust').checked = false;
+  document.getElementById('os-note').textContent = '';
+  document.getElementById('os-action-modal').style.display = 'flex';
+}
+function rejectOsAction() {
+  const id = _osActionId;
+  document.getElementById('os-action-modal').style.display = 'none';
+  _osActionId = '';
+  if (id) {
+    fetch(`${API_BASE}/api/os/reject`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    }).catch(() => {});
+  }
+  addChatLine('sys', '── action declined ──');
+}
+async function applyOsAction() {
+  const id = _osActionId;
+  if (!id) return;
+  const trust = document.getElementById('os-trust').checked;
+  const note = document.getElementById('os-note');
+  note.textContent = 'Working…';
+  try {
+    const res = await fetch(`${API_BASE}/api/os/confirm`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, trust_folder: trust })
+    });
+    const d = await res.json();
+    if (d.ok) {
+      document.getElementById('os-action-modal').style.display = 'none';
+      _osActionId = '';
+      const r = d.result || {};
+      if (d.kind === 'run_command') {
+        addChatLine('sys', `── ran command (exit ${r.code}) ──`);
+        const out = (r.stdout || '').trim();
+        const err = (r.stderr || '').trim();
+        if (out) addChatLine('sys', out.slice(0, 1500));
+        if (err && !r.ok) addChatLine('sys', 'stderr: ' + err.slice(0, 800));
+      } else {
+        addChatLine('sys', `── wrote ${r.path} (${r.bytes} bytes) ──`);
+      }
+    } else {
+      note.textContent = 'Failed: ' + (d.error || (d.result && d.result.error) || 'unknown error');
+    }
+  } catch (e) {
+    note.textContent = 'Failed — network error.';
+  }
+}
+window.showOsAction = showOsAction;
+window.applyOsAction = applyOsAction;
+window.rejectOsAction = rejectOsAction;
+
 /* ── Code edit diff / approval ── */
 let _pendingEditId = null;
 let _pendingEdit = null;   // { kind, filename, newContent } for uploaded-file edits
@@ -3522,6 +3606,13 @@ function connectGraceStream() {
           // Grace drafted an email — show it for approval (nothing sends yet).
           showEmailDraft(packet.data.to, packet.data.subject, packet.data.body,
                          packet.data.attach_name, packet.data.attach_id);
+        }
+        break;
+
+      case 'WIDGET_OSACTION':
+        if (packet.data && packet.data.action === 'confirm') {
+          // Desktop: Grace staged a run-command / write-file for approval.
+          showOsAction(packet.data);
         }
         break;
     }

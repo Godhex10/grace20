@@ -142,7 +142,15 @@ async def _azure_bytes(text: str) -> bytes:
 
 
 class MisoAudioEngine:
-    def __init__(self, output_dir: str = "static/audio", max_files: int = 100, max_age_hours: int = 24):
+    def __init__(self, output_dir: str = None, max_files: int = 100, max_age_hours: int = 24):
+        # Absolute path under the writable runtime dir so it works both in dev and
+        # as a packaged .exe (where the CWD may be read-only).
+        if output_dir is None:
+            try:
+                from services import appconfig
+                output_dir = os.path.join(appconfig.runtime_dir(), "static", "audio")
+            except Exception:
+                output_dir = "static/audio"
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.max_files = max_files

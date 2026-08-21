@@ -5,19 +5,23 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 
+from services import appconfig
 from database import engine
 import models
 import timeutils
-from routers import workspace, router_pipeline, tasks, logs, map_proxy, events, weather, projects, voice, upload, code, documents, habits, google_actions
+from routers import workspace, router_pipeline, tasks, logs, map_proxy, events, weather, projects, voice, upload, code, documents, habits, google_actions, os_actions, setup
 from services.audio import miso_voice
 from services.reminders import reminder_service
 
 
+STATIC_DIR = os.path.join(appconfig.runtime_dir(), "static")   # writable (exe-safe)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    os.makedirs("static/audio", exist_ok=True)
+    os.makedirs(os.path.join(STATIC_DIR, "audio"), exist_ok=True)
     try:
         models.Base.metadata.create_all(bind=engine)
     except Exception as e:
@@ -55,7 +59,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+os.makedirs(os.path.join(STATIC_DIR, "audio"), exist_ok=True)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Serve the single-page frontend so the desktop app (and local dev) can load Grace
+# same-origin at http://127.0.0.1:8000/. In cloud production Caddy serves these
+# before a request ever reaches FastAPI, so these routes are only used locally.
+# FRONTEND_DIR is the repo root in dev, or the PyInstaller bundle when frozen.
+FRONTEND_DIR = appconfig.bundle_dir()
+
+
+@app.get("/")
+async def _serve_index():
+    # First launch with no keys yet → send them to the setup screen.
+    if appconfig.is_configured():
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    return FileResponse(os.path.join(FRONTEND_DIR, "setup.html"))
+
+
+@app.get("/app")
+async def _serve_app():
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+
+@app.get("/setup")
+async def _serve_setup():
+    return FileResponse(os.path.join(FRONTEND_DIR, "setup.html"))
+
+
+@app.get("/styles.css")
+async def _serve_styles():
+    return FileResponse(os.path.join(FRONTEND_DIR, "styles.css"), media_type="text/css")
 
 app.include_router(workspace.router)
 app.include_router(router_pipeline.router)
@@ -71,6 +105,8 @@ app.include_router(code.router)
 app.include_router(documents.router)
 app.include_router(habits.router)
 app.include_router(google_actions.router)
+app.include_router(os_actions.router)   # endpoints self-guard: desktop-only
+app.include_router(setup.router)
 
 
 from sqlalchemy import text

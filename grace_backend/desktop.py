@@ -32,6 +32,19 @@ appconfig.load()                              # keys from %APPDATA%\Grace\.env (
 os.environ.setdefault("GRACE_DESKTOP", "1")   # enable local OS-control tools
 os.chdir(appconfig.runtime_dir())             # writable CWD (exe-safe)
 
+# Log to a file so problems on any machine are debuggable (the windowed exe has
+# no console). Location: %APPDATA%\Grace\grace.log.
+try:
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=[logging.FileHandler(os.path.join(appconfig.config_dir(), "grace.log"),
+                                      encoding="utf-8")],
+    )
+except Exception:
+    pass
+
 HOST = "127.0.0.1"
 BASE_PORT = int(os.environ.get("GRACE_PORT", "8000"))
 

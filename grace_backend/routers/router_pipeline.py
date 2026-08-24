@@ -53,12 +53,11 @@ except ImportError:
     logger.warning("google-genai not installed. Tier 2 reasoning will be unavailable.")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-# Gemini 2.5 Flash: fast, low-latency, generous free tier. Override with GRACE_MODEL.
-GRACE_MODEL = os.environ.get("GRACE_MODEL", "gemini-2.5-flash")
-# Model + output budget used for DEEP (code/debugging) tasks, where thoroughness
-# beats speed. Default to the same model (safe on any key); set GRACE_CODE_MODEL
-# to a reasoning model like "gemini-2.5-pro" for even deeper analysis.
-GRACE_CODE_MODEL = os.environ.get("GRACE_CODE_MODEL", GRACE_MODEL)
+# Fast, low-latency chat model. Override with GRACE_MODEL. (Default is a current
+# model — older ones like gemini-2.5-flash now 404 on new keys.)
+GRACE_MODEL = os.environ.get("GRACE_MODEL", "gemini-3.1-flash-lite")
+# Model used for DEEP (code/debugging) tasks, where thoroughness beats speed.
+GRACE_CODE_MODEL = os.environ.get("GRACE_CODE_MODEL", "gemini-3.6-flash")
 try:
     _CHAT_MAX_TOKENS = int(os.environ.get("GRACE_MAX_TOKENS", "400"))
 except ValueError:
@@ -4218,9 +4217,25 @@ async def process_user_intent(payload: CommandInput, db: Session = Depends(get_d
                     except Exception as e2:
                         logger.error(f"Fallback model also failed: {e2}", exc_info=True)
                 if not fell_back:
-                    response_text = (
-                        "The model's briefly overloaded, Boss — give me a moment and try again."
-                    )
+                    m = str(e).lower()
+                    if not GEMINI_API_KEY:
+                        response_text = ("There's no Gemini API key set on this machine, Boss — "
+                                         "open Setup and add it, then reopen me.")
+                    elif any(k in m for k in ("api key", "api_key", "unauthenticated",
+                                              "permission", "401", "403", "invalid")):
+                        response_text = ("My Gemini API key looks invalid on this machine — "
+                                         "double-check it in Setup.")
+                    elif any(k in m for k in ("not_found", "not found", "404",
+                                              "does not exist", "unsupported")):
+                        response_text = (f"The model '{GRACE_MODEL}' isn't available on this key. "
+                                         "Set GRACE_MODEL to a current one and reopen me.")
+                    elif any(k in m for k in ("getaddrinfo", "resolve", "connection",
+                                              "connect", "timeout", "network", "ssl")):
+                        response_text = ("I can't reach my brain, Boss — check this machine's "
+                                         "internet connection.")
+                    else:
+                        response_text = ("The model's briefly overloaded, Boss — give me a "
+                                         "moment and try again.")
         else:
             response_text = (
                 f"I parsed your command: '{user_raw_string}'. "

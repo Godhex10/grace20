@@ -14,6 +14,7 @@ import timeutils
 from routers import workspace, router_pipeline, tasks, logs, map_proxy, events, weather, projects, voice, upload, code, documents, habits, google_actions, os_actions, setup
 from services.audio import miso_voice
 from services.reminders import reminder_service
+from services.proactive import proactive_monitor
 
 
 STATIC_DIR = os.path.join(appconfig.runtime_dir(), "static")   # writable (exe-safe)
@@ -28,8 +29,10 @@ async def lifespan(app: FastAPI):
         print(f"Database initialization failed: {e}")
     await miso_voice.start_cleanup_task()
     await reminder_service.start()
+    await proactive_monitor.start()      # desktop-only watchers (no-op on cloud)
     yield
     await reminder_service.stop()
+    await proactive_monitor.stop()
 
 
 app = FastAPI(

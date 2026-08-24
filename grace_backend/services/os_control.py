@@ -85,12 +85,48 @@ def expand(path: str) -> str:
     return full
 
 
+# Files from the most recent find_file — so a loose follow-up ("open the psd",
+# "the second one") resolves to the real file even if the model shortens the path.
+_last_finds: list = []
+
+
+def remember_finds(paths):
+    global _last_finds
+    _last_finds = [p for p in (paths or []) if p]
+
+
+def _recent_match(path: str):
+    """Best match for `path` among the last search results, or None. Only ever used
+    as a fallback for OPENING a file — never for delete/write — and only when the
+    literal path doesn't exist, so it can't touch unrelated files."""
+    if not _last_finds:
+        return None
+    tok = os.path.basename((path or "").strip().strip('"').strip("'")).lower()
+    if not tok:
+        return None
+    for f in _last_finds:                                  # exact filename
+        if os.path.basename(f).lower() == tok:
+            return f
+    ext = tok.lstrip(".").split()[-1] if tok else ""       # by extension ("psd")
+    by_ext = [f for f in _last_finds if f.lower().endswith("." + ext)]
+    if len(by_ext) == 1:
+        return by_ext[0]
+    subs = [f for f in _last_finds if tok in os.path.basename(f).lower()]  # substring
+    if len(subs) == 1:
+        return subs[0]
+    return None
+
+
 # ── SAFE (run immediately) ──────────────────────────────────────────────────
 def open_path(path: str) -> dict:
     """Open a file or folder with the OS default handler."""
     full = expand(path)
     if not os.path.exists(full):
-        return {"error": f"Nothing exists at {full}."}
+        alt = _recent_match(path)          # loose follow-up → last search result
+        if alt:
+            full = alt
+        else:
+            return {"error": f"Nothing exists at {full}."}
     try:
         if sys.platform == "win32":
             os.startfile(full)  # type: ignore[attr-defined]
@@ -122,7 +158,11 @@ def open_with(path: str, app: str) -> dict:
     Notepad / VS Code / Chrome'). Falls back to the default handler if no app."""
     full = expand(path)
     if not os.path.exists(full):
-        return {"error": f"Nothing exists at {full}."}
+        alt = _recent_match(path)
+        if alt:
+            full = alt
+        else:
+            return {"error": f"Nothing exists at {full}."}
     if not (app or "").strip():
         return open_path(path)
     exe = _APP_ALIASES.get(app.strip().lower(), app.strip())
@@ -202,6 +242,26 @@ def trust_folder(path: str, hours: float = 1.0) -> str:
     return d
 
 
+# When True, mutating actions (run command, write/delete files) pop a one-tap
+# Apply card first. Operator turned this OFF — "just do it". Toggle via the tool.
+CONFIRM_ACTIONS = False
+
+
+def should_gate(path: str = None) -> bool:
+    """Whether a mutating action needs the operator's Apply first."""
+    if not CONFIRM_ACTIONS:
+        return False
+    if path and is_trusted(path):
+        return False
+    return True
+
+
+def set_confirm(enabled: bool) -> bool:
+    global CONFIRM_ACTIONS
+    CONFIRM_ACTIONS = bool(enabled)
+    return CONFIRM_ACTIONS
+
+
 # ── Pending (gated) actions ─────────────────────────────────────────────────
 _pending: dict = {}
 _MAX_PENDING = 30
@@ -250,6 +310,22 @@ def run_now(kind: str, payload: dict) -> dict:
 def _run_command(command: str, cwd: str = None) -> dict:
     if not (command or "").strip():
         return {"error": "No command given."}
+    # If the whole command is just a path to an existing file (e.g. an installer
+    # like "Claude Setup (1).exe"), launch it directly — os.startfile handles
+    # spaces/parentheses that a raw shell call chokes on.
+    only = command.strip()
+    if only[:1] == '"' and only[-1:] == '"':
+        only = only[1:-1]
+    cand = expand(only)
+    if os.path.isfile(cand):
+        try:
+            if sys.platform == "win32":
+                os.startfile(cand)          # type: ignore[attr-defined]
+            else:
+                subprocess.Popen([cand])
+            return {"ok": True, "code": 0, "stdout": f"Launched {cand}", "stderr": ""}
+        except Exception as e:
+            return {"error": f"Couldn't launch it: {e}"}
     cwd_full = expand(cwd) if cwd else None
     if cwd_full and not os.path.isdir(cwd_full):
         return {"error": f"Working folder doesn't exist: {cwd_full}."}
@@ -777,14 +853,19 @@ def _set_brightness(percent):
 
 def brightness(action: str, level=None) -> dict:
     action = (action or "").lower().strip()
-    if action == "set" and level is not None:
-        return _set_brightness(level)
+    # Any "to X%" phrasing (set/reduce/lower/change to 10) gives a target level —
+    # honour it, unless he's asking to go UP by a step.
+    if level is not None and str(level).strip() != "" and action not in ("up", "increase", "brighter"):
+        try:
+            return _set_brightness(int(level))
+        except (TypeError, ValueError):
+            pass
     cur = _get_brightness()
     if cur is None:
         return {"error": "Couldn't read brightness (desktop monitor?)."}
     if action in ("up", "increase", "brighter"):
         return _set_brightness(min(100, cur + 15))
-    if action in ("down", "decrease", "dimmer"):
+    if action in ("down", "decrease", "dimmer", "reduce", "lower", "dim"):
         return _set_brightness(max(0, cur - 15))
     return {"ok": True, "level": cur}
 

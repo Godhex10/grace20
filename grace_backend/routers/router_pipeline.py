@@ -2542,6 +2542,37 @@ def _build_final_tool():
                     required=["action"],
                 ),
             ),
+            genai_types.FunctionDeclaration(
+                name="proactive_alerts",
+                description=(
+                    "Turn Grace's proactive desktop alerts on/off (she reaches out on low "
+                    "battery, near-full disk, finished downloads, and long-session break "
+                    "nudges). action 'enable'/'disable' with which alert; 'status' lists "
+                    "them. e.g. 'stop reminding me about breaks' → disable break."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action":  genai_types.Schema(type=genai_types.Type.STRING, description="enable | disable | status"),
+                        "setting": genai_types.Schema(type=genai_types.Type.STRING, description="battery | disk | downloads | break | all"),
+                    },
+                    required=["action"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="confirm_actions",
+                description=(
+                    "Turn the Apply/Reject confirmation on or off for risky actions (run "
+                    "command, write/delete files). It's currently OFF — she just does what "
+                    "he says. Use 'on' if he asks to be asked first ('ask me before you run "
+                    "things'), 'off' to go back to just-do-it."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={"enabled": genai_types.Schema(type=genai_types.Type.BOOLEAN, description="true = ask first; false = just do it.")},
+                    required=["enabled"],
+                ),
+            ),
         ]
     )
 
@@ -2924,13 +2955,12 @@ async def _write_local_file_from_tool(args: dict, db) -> str:
     content = args.get("content") or ""
     if not path:
         return "I need a file path to write to, Boss."
-    # Trusted folder → write immediately; otherwise stage for his approval.
-    if os_control.is_trusted(path):
+    # Just do it (unless confirmation mode is on) — the old file is backed up first.
+    if not os_control.should_gate(path):
         res = os_control.run_now("write_file", {"path": path, "content": content})
         if "error" in res:
             return f"Couldn't write it: {res['error']}"
-        bk = " (backed up the old one)" if res.get("backup") else ""
-        return f"Saved {res['path']} ({res['bytes']} bytes){bk}."
+        return f"✓ Saved {os.path.basename(res['path'])}"
     aid = os_control.stage("write_file", {"path": path, "content": content})
     preview = content if len(content) <= 800 else content[:800] + "\n…"
     await push_workspace_update("WIDGET_OSACTION", {
@@ -2946,8 +2976,8 @@ async def _run_command_from_tool(args: dict, db) -> str:
     cwd = (args.get("cwd") or "").strip()
     if not command:
         return "What command should I run, Boss?"
-    # Trusted working folder → run immediately; otherwise stage for his approval.
-    if cwd and os_control.is_trusted(cwd):
+    # Just run it (unless confirmation mode is on).
+    if not os_control.should_gate(cwd or None):
         res = os_control.run_now("run_command", {"command": command, "cwd": cwd})
         return _fmt_run_result(res)
     aid = os_control.stage("run_command", {"command": command, "cwd": cwd})
@@ -3042,6 +3072,7 @@ async def _find_file_from_tool(args: dict, db) -> str:
     if "error" in res:
         return res["error"]
     hits = res.get("matches", [])
+    os_control.remember_finds(hits)          # so a loose "open the psd" resolves right
     if not hits:
         return f"No files matching '{args.get('name')}' under {res.get('base')}."
     tail = " (showing the first ones)" if res.get("truncated") else ""
@@ -3065,9 +3096,13 @@ async def _file_operation_from_tool(args: dict, db) -> str:
         return "Which file or folder, Boss?"
     else:
         target = os_control.expand(path)
-    if path and os_control.is_trusted(path):
+    if not os_control.should_gate(path or None):
         res = os_control.run_now("file_op", {"op": op, "path": path, "dest": dest})
-        return f"✓ {op} done" if res.get("ok") else res.get("error", "Failed.")
+        if "error" in res:
+            return res["error"]
+        if op in ("delete", "remove", "trash", "recycle"):
+            return f"✓ Deleted {os.path.basename(target)} (in the Recycle Bin if you need it back)"
+        return f"✓ {op} done"
     aid = os_control.stage("file_op", {"op": op, "path": path, "dest": dest})
     detail = f"{op}: {target}" + (f"  →  {os_control.expand(dest)}" if dest else "")
     await push_workspace_update("WIDGET_OSACTION", {
@@ -3221,7 +3256,7 @@ async def _batch_rename_from_tool(args: dict, db) -> str:
     if not folder or not prefix:
         return "I need a folder and a name prefix, Boss."
     payload = {"folder": folder, "prefix": prefix, "ext": ext}
-    if os_control.is_trusted(folder):
+    if not os_control.should_gate(folder):
         res = os_control.run_now("batch_rename", payload)
         return f"✓ Renamed {res.get('count', 0)} files" if res.get("ok") else res.get("error", "Failed.")
     aid = os_control.stage("batch_rename", payload)
@@ -3239,6 +3274,9 @@ async def _close_top_memory_from_tool(args: dict, db) -> str:
         return "Couldn't find a closable app, Boss."
     name, mem, pid = top
     mb = round(mem / 1048576)
+    if not os_control.should_gate():
+        res = os_control.run_now("kill_pid", {"pid": pid})
+        return f"✓ Closed {name} ({mb} MB)" if res.get("ok") else f"Couldn't close {name}: {res.get('detail','')}"
     aid = os_control.stage("kill_pid", {"pid": pid})
     await push_workspace_update("WIDGET_OSACTION", {
         "action": "confirm", "id": aid, "kind": "file_op", "title": "Close app",
@@ -3291,6 +3329,34 @@ async def _schedule_task_from_tool(args: dict, db) -> str:
     if not res.get("ok"):
         return f"Couldn't schedule it, Boss — may need admin. ({res.get('detail','')})"
     return f"✓ Scheduled '{res.get('name','').split(chr(92))[-1]}' at {res.get('time')} ({res.get('repeat')})"
+
+
+async def _proactive_alerts_from_tool(args: dict, db) -> str:
+    from services.proactive import proactive_monitor
+    action = (args.get("action") or "status").lower().strip()
+    setting = (args.get("setting") or "all").lower().strip()
+    s = proactive_monitor.settings
+    if action == "status":
+        on = [k for k, v in s.items() if v]
+        off = [k for k, v in s.items() if not v]
+        return (f"Proactive alerts on: {', '.join(on) or 'none'}." +
+                (f" Off: {', '.join(off)}." if off else ""))
+    want = action in ("enable", "on", "turn_on")
+    keys = list(s.keys()) if setting in ("all", "everything") else [setting]
+    changed = []
+    for k in keys:
+        if k in s:
+            s[k] = want
+            changed.append(k)
+    if not changed:
+        return f"I don't have an alert called '{setting}', Boss. Options: battery, disk, downloads, break."
+    return f"✓ {'Enabled' if want else 'Disabled'} {', '.join(changed)} alert(s)"
+
+
+async def _confirm_actions_from_tool(args: dict, db) -> str:
+    on = os_control.set_confirm(bool(args.get("enabled")))
+    return ("✓ I'll ask before running risky actions now." if on
+            else "✓ Got it — I'll just do it, no confirmations.")
 
 
 async def _get_directions_from_tool(args: dict, db) -> str:
@@ -3701,6 +3767,10 @@ async def _run_reasoning_loop(system_persona, user_text, stream_id, allow_search
                 result_text = await _pdf_tool_from_tool(dict(fc.args or {}), db)
             elif fc.name == "schedule_task":
                 result_text = await _schedule_task_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "proactive_alerts":
+                result_text = await _proactive_alerts_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "confirm_actions":
+                result_text = await _confirm_actions_from_tool(dict(fc.args or {}), db)
             else:
                 result_text = f"Unknown tool '{fc.name}'."
             response_parts.append(
@@ -3867,6 +3937,12 @@ async def process_user_intent(payload: CommandInput, db: Session = Depends(get_d
                 "computer, and you can genuinely act on it. When he tells you to do something "
                 "with his files, folders, or apps, DO IT with these tools — don't say you "
                 "can't or that you lack access; you have it. "
+                "To RUN, launch, or open a program, installer, or ANY file (even a .exe "
+                "with spaces/parentheses in its name like 'Claude Setup (1).exe'), use "
+                "open_path — it launches it correctly. Use run_command only for real "
+                "command-line commands, not for opening a file. "
+                "He's turned OFF the Apply/Reject confirmation — when he tells you to do "
+                "something, just DO IT (don't say you've queued it or need approval). "
                 "Safe, instant (no confirmation): open_path (open a file/folder in "
                 "Explorer/its default app), open_with (open a file in a SPECIFIC app he "
                 "names — Notepad, VS Code, Chrome, etc., e.g. after Windows asks how to open "

@@ -14,7 +14,8 @@ hiddenimports += collect_submodules('services')
 
 for pkg in ['uvicorn', 'webview', 'google.genai', 'psycopg', 'sqlalchemy',
             'edge_tts', 'googleapiclient', 'google_auth_oauthlib', 'google.auth',
-            'google.oauth2', 'docx', 'pypdf', 'fpdf', 'anyio', 'dotenv']:
+            'google.oauth2', 'docx', 'pypdf', 'fpdf', 'anyio', 'dotenv',
+            'PIL', 'send2trash', 'pycaw', 'comtypes', 'psutil']:
     try:
         d, b, h = collect_all(pkg)
         datas += d

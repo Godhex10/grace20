@@ -21,7 +21,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/comment/comment.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@200;300;400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./styles.css?v=20260821b">
+<link rel="stylesheet" href="./styles.css?v=20260824a">
 </head>
 <body>
 
@@ -1756,6 +1756,8 @@ function _speechStoreSentence(seq, text) {
 function _speechNotice(text) {
   if (!_speech.el) return;
   _speech.committed += text;
+  // A "✓…" reply is a silent action ack — render it as a subtle grey line.
+  if (_speech.committed.trimStart().startsWith('✓')) _speech.el.classList.add('ack');
   _speechReveal(_speech.currentText.length);
 }
 
@@ -1791,7 +1793,9 @@ function _speechFinalizeIfDone() {
   if (Object.keys(_speech.pending).length > 0) return;
   if (_speech.maxSeq >= 0 && _speech.lastPlayed < _speech.maxSeq) return;
   if (!_speech.el) return;
-  _speech.el.textContent = _speech.finalText || _speech.committed;  // drop caret, finalize
+  const finalMsg = _speech.finalText || _speech.committed;
+  if ((finalMsg || '').trimStart().startsWith('✓')) _speech.el.classList.add('ack');
+  _speech.el.textContent = finalMsg;  // drop caret, finalize
   _speech.el = null;  // detach so no further updates
 }
 
@@ -3231,12 +3235,14 @@ async function sendEmailDraft() {
 let _osActionId = '';
 function showOsAction(d) {
   _osActionId = d.id || '';
-  const isCmd = d.kind === 'run_command';
-  document.getElementById('os-title').textContent = isCmd ? '⚙ Run command' : '💾 Write file';
-  document.getElementById('os-sub').textContent = isCmd ? 'Command' : 'File contents';
-  document.getElementById('os-detail').textContent = isCmd ? (d.command || '') : (d.preview || '');
-  document.getElementById('os-path').textContent = isCmd ? (d.cwd ? ('in ' + d.cwd) : '') : (d.path || '');
-  document.getElementById('os-apply-btn').textContent = isCmd ? '▶ Run' : '💾 Write';
+  const isWrite = d.kind === 'write_file';
+  document.getElementById('os-title').textContent = '⚙ ' + (d.title || 'Approve action');
+  document.getElementById('os-sub').textContent = isWrite ? 'File contents'
+      : (d.kind === 'file_op' ? 'Operation' : 'Command');
+  document.getElementById('os-detail').textContent = isWrite ? (d.preview || '') : (d.command || '');
+  document.getElementById('os-path').textContent = isWrite ? (d.path || '') : (d.cwd ? ('in ' + d.cwd) : '');
+  document.getElementById('os-apply-btn').textContent = isWrite ? '💾 Write'
+      : (d.kind === 'file_op' ? '✔ Do it' : '▶ Run');
   document.getElementById('os-trust').checked = false;
   document.getElementById('os-note').textContent = '';
   document.getElementById('os-action-modal').style.display = 'flex';
@@ -3275,6 +3281,8 @@ async function applyOsAction() {
         const err = (r.stderr || '').trim();
         if (out) addChatLine('sys', out.slice(0, 1500));
         if (err && !r.ok) addChatLine('sys', 'stderr: ' + err.slice(0, 800));
+      } else if (d.kind === 'file_op') {
+        addChatLine('sys', `── ${r.op || 'file op'} done${r.path ? ': ' + r.path : ''} ──`);
       } else {
         addChatLine('sys', `── wrote ${r.path} (${r.bytes} bytes) ──`);
       }
@@ -3427,7 +3435,8 @@ function connectGraceStream() {
             _speech.finalText = packet.data.message || '';
             _speechFinalizeIfDone();
           } else if (packet.data.message) {
-            addChatLine('grace', packet.data.message);
+            const ack = (packet.data.message || '').trimStart().startsWith('✓');
+            addChatLine(ack ? 'grace ack' : 'grace', packet.data.message);
           }
         }
         break;

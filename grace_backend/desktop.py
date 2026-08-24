@@ -22,6 +22,9 @@ if sys.stderr is None:
     sys.stderr = open(os.devnull, "w")
 
 # ── config + paths (must happen before importing the app / database) ─────────
+# Make the script path absolute BEFORE we change directory — otherwise PyWebView
+# resolves a relative sys.argv[0] against the new CWD and doubles the path.
+sys.argv[0] = os.path.abspath(sys.argv[0])
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from services import appconfig
 

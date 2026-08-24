@@ -34,6 +34,7 @@ build_onefile_log.txt
 
 # ── Generated TTS audio cache (runtime, not source) ───────────────────────
 grace_backend/static/audio/
+grace_backend/screenshots/
 
 # ── Editor / OS / build artifacts ─────────────────────────────────────────
 .claude/settings.local.json

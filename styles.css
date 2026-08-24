@@ -270,6 +270,9 @@ body.kanban-active .stage {
 .chat-line.grace { color:#ff9f1a; font-weight:bold; }
 .chat-line.grace::before { content:'> '; color:rgba(255,159,26,0.7); }
 .chat-line.sys { color:rgba(255,255,255,0.3); font-size:9px; letter-spacing:1px; text-transform:uppercase; border-top:1px solid rgba(255,255,255,0.08); padding-top:4px; margin-top:2px; }
+/* Silent action ack ("✓ Opened Downloads") — subtle, muted, not spoken. */
+.chat-line.grace.ack { color:rgba(150,220,170,0.7); font-weight:normal; font-size:10px; }
+.chat-line.grace.ack::before { content:''; }
 .chat-input-wrap { display:flex; align-items:center; gap:8px; padding:8px 10px; border-top:1px solid rgba(255,255,255,0.12); background:rgba(5,5,5,0.6); backdrop-filter:blur(8px); position:relative; z-index:1; }
 .chat-input { flex:1; background:transparent; border:none; outline:none; font-family:'Share Tech Mono',monospace; font-size:11px; color:rgba(255,255,255,0.8); caret-color:#ffffff; }
 .chat-input::placeholder { color:rgba(255,255,255,0.25); }

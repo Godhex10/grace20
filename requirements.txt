@@ -15,3 +15,8 @@ httpx>=0.28.0
 python-dotenv==1.0.0
 tzdata>=2024.1
 pywebview>=5.0    # desktop app window (grace_backend/desktop.py)
+# Desktop system-control tools (grace_backend/services/os_control.py)
+pillow>=10.0      # screenshots
+send2trash>=1.8   # recycle-bin delete
+pycaw>=20240210   # precise volume control
+comtypes>=1.2     # (pycaw dependency)

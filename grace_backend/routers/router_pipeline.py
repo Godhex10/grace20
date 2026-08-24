@@ -2083,6 +2083,25 @@ def _build_desktop_tool():
                 ),
             ),
             genai_types.FunctionDeclaration(
+                name="open_with",
+                description=(
+                    "Open a file with a SPECIFIC application the operator names — e.g. "
+                    "'open this with Notepad', 'open it in VS Code', 'open the pdf in "
+                    "Chrome'. Use this whenever he says which app to use (including after "
+                    "Windows asks him how to open a file). Knows common apps: notepad, "
+                    "wordpad, word, excel, paint, vscode/code, chrome, edge, firefox, vlc. "
+                    "Safe, no confirmation needed."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "path": genai_types.Schema(type=genai_types.Type.STRING, description="File to open."),
+                        "app":  genai_types.Schema(type=genai_types.Type.STRING, description="App to open it with (name or executable, e.g. 'notepad', 'code', 'chrome')."),
+                    },
+                    required=["path", "app"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
                 name="list_directory",
                 description=(
                     "List the files and folders inside a directory on his computer. Use "
@@ -2143,6 +2162,384 @@ def _build_desktop_tool():
                         "cwd":     genai_types.Schema(type=genai_types.Type.STRING, description="Optional folder to run it in."),
                     },
                     required=["command"],
+                ),
+            ),
+        ]
+    )
+
+
+def _build_system_tool():
+    """Whole-computer control — desktop app only (GRACE_DESKTOP=1)."""
+    return genai_types.Tool(
+        function_declarations=[
+            genai_types.FunctionDeclaration(
+                name="system_power",
+                description=(
+                    "Control the computer's power/session: shut down, restart, sleep, "
+                    "hibernate, log off, lock the screen, or cancel a pending shutdown. "
+                    "Shutdown/restart run after a short delay you can cancel — tell him "
+                    "he can say 'cancel' to stop it. Use delay_minutes for 'shut down in "
+                    "30 minutes'."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action": genai_types.Schema(type=genai_types.Type.STRING, description="shutdown | restart | sleep | hibernate | logoff | lock | cancel"),
+                        "delay_minutes": genai_types.Schema(type=genai_types.Type.INTEGER, description="Optional delay before shutdown/restart (minutes)."),
+                    },
+                    required=["action"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="media_control",
+                description=(
+                    "Control sound and media playback: volume_up, volume_down, set_volume "
+                    "(with level 0-100), mute, play_pause, next, previous. Works with "
+                    "Spotify, YouTube, any media app."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action": genai_types.Schema(type=genai_types.Type.STRING, description="volume_up | volume_down | set_volume | mute | play_pause | next | previous"),
+                        "level":  genai_types.Schema(type=genai_types.Type.INTEGER, description="For set_volume: 0-100."),
+                    },
+                    required=["action"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="take_screenshot",
+                description=(
+                    "Capture the current screen. Saves the image and loads it so you can "
+                    "look at it — after taking it, if he asks what's on screen, describe "
+                    "it from the captured image."
+                ),
+                parameters=genai_types.Schema(type=genai_types.Type.OBJECT, properties={}),
+            ),
+            genai_types.FunctionDeclaration(
+                name="display_control",
+                description=(
+                    "Screen/monitor actions: monitor_off (turn display off), show_desktop "
+                    "(minimise everything), extend / duplicate / external / internal "
+                    "(second-monitor mode)."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={"action": genai_types.Schema(type=genai_types.Type.STRING, description="monitor_off | show_desktop | extend | duplicate | external | internal")},
+                    required=["action"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="app_control",
+                description=(
+                    "Launch, close, or focus apps and windows. 'launch' opens an app; "
+                    "'focus' brings its window to front; 'close' force-quits the whole app "
+                    "by process (e.g. 'close Chrome'); 'close_window' gracefully closes a "
+                    "SPECIFIC window by its title — use this to close ONE File Explorer "
+                    "folder window (e.g. 'close my Downloads folder' → name 'Downloads') or "
+                    "one browser/app window, WITHOUT killing the whole app. Prefer "
+                    "close_window for 'close this folder/window'; use close only to fully "
+                    "quit an app."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action": genai_types.Schema(type=genai_types.Type.STRING, description="launch | focus | close | close_window"),
+                        "name":   genai_types.Schema(type=genai_types.Type.STRING, description="App name (spotify, chrome, ...) for launch/focus/close, OR the window/folder TITLE (e.g. 'Downloads') for close_window."),
+                    },
+                    required=["action", "name"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="list_processes",
+                description="List the apps/processes currently running, by memory use. Use for 'what's running' / 'what's eating my memory'.",
+                parameters=genai_types.Schema(type=genai_types.Type.OBJECT, properties={}),
+            ),
+            genai_types.FunctionDeclaration(
+                name="find_file",
+                description="Search his computer for files whose name contains the text. Use for 'find my tax pdf', 'where's my resume'. Searches his home folder by default.",
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "name": genai_types.Schema(type=genai_types.Type.STRING, description="Text in the file name to look for."),
+                        "root": genai_types.Schema(type=genai_types.Type.STRING, description="Optional folder to search under (default his home folder)."),
+                    },
+                    required=["name"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="file_operation",
+                description=(
+                    "Create/rename/move/copy/delete files or folders, or empty the recycle "
+                    "bin. create_folder happens right away; delete/move/rename/copy/"
+                    "empty_recycle_bin pop an Apply/Reject card first (delete goes to the "
+                    "Recycle Bin, recoverable)."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "op":   genai_types.Schema(type=genai_types.Type.STRING, description="create_folder | delete | move | rename | copy | empty_recycle_bin"),
+                        "path": genai_types.Schema(type=genai_types.Type.STRING, description="Target file/folder path."),
+                        "dest": genai_types.Schema(type=genai_types.Type.STRING, description="Destination / new name (for move/rename/copy)."),
+                    },
+                    required=["op"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="clipboard",
+                description="Read or set the Windows clipboard. action 'get' returns what's on it; 'set' copies your `text` onto it.",
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action": genai_types.Schema(type=genai_types.Type.STRING, description="get | set"),
+                        "text":   genai_types.Schema(type=genai_types.Type.STRING, description="For 'set': the text to copy."),
+                    },
+                    required=["action"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="type_text",
+                description=(
+                    "Type text into whatever window currently has focus (as if typed on "
+                    "the keyboard). He must click into the target field/app first. Use for "
+                    "'type my address', 'fill this in'."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={"text": genai_types.Schema(type=genai_types.Type.STRING, description="The text to type.")},
+                    required=["text"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="system_status",
+                description="Report battery, CPU, RAM, free disk space, uptime, and IP address. Use for 'what's my battery', 'how much space is left', 'what's my IP'.",
+                parameters=genai_types.Schema(type=genai_types.Type.OBJECT, properties={}),
+            ),
+        ]
+    )
+
+
+def _build_extra_tool():
+    """Web, network, display & handy extras — desktop app only."""
+    return genai_types.Tool(
+        function_declarations=[
+            genai_types.FunctionDeclaration(
+                name="web",
+                description=(
+                    "Do something on the web in his browser. 'open' opens a website "
+                    "(url or domain), 'search' googles the query, 'play' plays a song/"
+                    "video/artist on YouTube (default) or Spotify. e.g. 'open youtube.com', "
+                    "'search cheap flights to Lagos', 'play Burna Boy on Spotify'."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action":  genai_types.Schema(type=genai_types.Type.STRING, description="open | search | play"),
+                        "query":   genai_types.Schema(type=genai_types.Type.STRING, description="URL/domain for open, search terms, or what to play."),
+                        "service": genai_types.Schema(type=genai_types.Type.STRING, description="For play: 'youtube' (default) or 'spotify'."),
+                    },
+                    required=["action", "query"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="network",
+                description=(
+                    "Network & WiFi: online (am I connected?), public_ip, flush_dns, "
+                    "wifi_status (current network + signal), wifi_password (of a network), "
+                    "list_networks, wifi_connect (to `name`), wifi_disconnect, wifi_on, "
+                    "wifi_off. Toggling the adapter (wifi_on/off) may need admin."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action": genai_types.Schema(type=genai_types.Type.STRING, description="online | public_ip | flush_dns | wifi_status | wifi_password | list_networks | wifi_connect | wifi_disconnect | wifi_on | wifi_off"),
+                        "name":   genai_types.Schema(type=genai_types.Type.STRING, description="Network name (for wifi_connect / wifi_password of a specific network)."),
+                    },
+                    required=["action"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="brightness",
+                description="Adjust screen brightness (laptops): up, down, or set (with level 0-100). Desktop monitors may not support this.",
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action": genai_types.Schema(type=genai_types.Type.STRING, description="up | down | set"),
+                        "level":  genai_types.Schema(type=genai_types.Type.INTEGER, description="For set: 0-100."),
+                    },
+                    required=["action"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="window_control",
+                description=(
+                    "Manage a window by its title: minimize, maximize, restore, snap_left, "
+                    "snap_right, always_on_top, unpin. e.g. 'maximize Chrome', 'snap this "
+                    "to the left', 'keep Notepad on top'. For monitor duplicate/extend use "
+                    "display_control (extend/duplicate/external/internal)."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action": genai_types.Schema(type=genai_types.Type.STRING, description="minimize | maximize | restore | snap_left | snap_right | always_on_top | unpin"),
+                        "title":  genai_types.Schema(type=genai_types.Type.STRING, description="Part of the window's title (app or folder name)."),
+                    },
+                    required=["action", "title"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="archive",
+                description="Zip or unzip. 'zip' compresses a file/folder into a .zip; 'unzip' extracts a .zip. Safe, no confirmation.",
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "op":   genai_types.Schema(type=genai_types.Type.STRING, description="zip | unzip"),
+                        "path": genai_types.Schema(type=genai_types.Type.STRING, description="File/folder to zip, or the .zip to extract."),
+                        "dest": genai_types.Schema(type=genai_types.Type.STRING, description="Optional output path/folder."),
+                    },
+                    required=["op", "path"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="reveal_file",
+                description="Open File Explorer with a file selected/highlighted — 'show me where X is'. Safe.",
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={"path": genai_types.Schema(type=genai_types.Type.STRING, description="The file/folder to reveal.")},
+                    required=["path"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="system_utility",
+                description=(
+                    "Maintenance: restart_explorer (fix a frozen taskbar), clear_temp "
+                    "(delete temp files), or list_installed (installed programs)."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={"action": genai_types.Schema(type=genai_types.Type.STRING, description="restart_explorer | clear_temp | list_installed")},
+                    required=["action"],
+                ),
+            ),
+        ]
+    )
+
+
+def _build_final_tool():
+    """Print, file info, personalization, image/PDF, scheduling — desktop only."""
+    return genai_types.Tool(
+        function_declarations=[
+            genai_types.FunctionDeclaration(
+                name="file_details",
+                description=(
+                    "File/folder utilities: 'print' sends a file to the default printer; "
+                    "'info' reports size/date/type (folder size + file count for a folder); "
+                    "'recent' lists the most recently changed files in a folder (default "
+                    "Downloads). e.g. 'print this', 'how big is my Downloads folder', "
+                    "'show my recent downloads'."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action": genai_types.Schema(type=genai_types.Type.STRING, description="print | info | recent"),
+                        "path":   genai_types.Schema(type=genai_types.Type.STRING, description="File to print/inspect, or folder for info/recent."),
+                    },
+                    required=["action"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="batch_rename",
+                description=(
+                    "Rename all files in a folder to prefix_1, prefix_2, … (keeps each "
+                    "file's extension). Optionally only files of one type. Pops an "
+                    "Apply/Reject card first."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "folder": genai_types.Schema(type=genai_types.Type.STRING, description="Folder whose files to rename."),
+                        "prefix": genai_types.Schema(type=genai_types.Type.STRING, description="New base name, e.g. 'invoice'."),
+                        "ext":    genai_types.Schema(type=genai_types.Type.STRING, description="Optional: only rename this extension (e.g. 'jpg')."),
+                    },
+                    required=["folder", "prefix"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="close_top_memory",
+                description="Find and close the app using the most memory (excludes system-critical processes). Pops an Apply/Reject card naming the app first.",
+                parameters=genai_types.Schema(type=genai_types.Type.OBJECT, properties={}),
+            ),
+            genai_types.FunctionDeclaration(
+                name="personalize",
+                description=(
+                    "Personalization & settings: set the desktop wallpaper to an image "
+                    "(action 'wallpaper', value = image path), switch Windows theme (action "
+                    "'dark' or 'light'), or change the power plan (action 'power_plan', "
+                    "value = 'high performance' | 'balanced' | 'power saver')."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action": genai_types.Schema(type=genai_types.Type.STRING, description="wallpaper | dark | light | power_plan"),
+                        "value":  genai_types.Schema(type=genai_types.Type.STRING, description="Image path (wallpaper) or plan name (power_plan)."),
+                    },
+                    required=["action"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="image_tool",
+                description=(
+                    "Edit an image: 'resize' (value = percent like '50' or 'WxH' like "
+                    "'800x600'), 'convert' (value = target format like 'jpg'/'png'), or "
+                    "'compress' (value = quality 1-95). Saves a new file."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "op":    genai_types.Schema(type=genai_types.Type.STRING, description="resize | convert | compress"),
+                        "path":  genai_types.Schema(type=genai_types.Type.STRING, description="Image file."),
+                        "value": genai_types.Schema(type=genai_types.Type.STRING, description="Percent/dimensions, format, or quality."),
+                        "dest":  genai_types.Schema(type=genai_types.Type.STRING, description="Optional output path."),
+                    },
+                    required=["op", "path"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="pdf_tool",
+                description=(
+                    "Work with PDFs: 'merge' (combine two PDFs — path + path2, or a "
+                    "comma-separated list in path), 'extract' (pull pages, e.g. pages "
+                    "'2-5' or '1,3,5'), or 'split' (one file per page). Saves new file(s)."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "op":    genai_types.Schema(type=genai_types.Type.STRING, description="merge | extract | split"),
+                        "path":  genai_types.Schema(type=genai_types.Type.STRING, description="The PDF (or first PDF / comma list for merge)."),
+                        "path2": genai_types.Schema(type=genai_types.Type.STRING, description="Second PDF for merge."),
+                        "pages": genai_types.Schema(type=genai_types.Type.STRING, description="Pages for extract, e.g. '2-5' or '1,3,5'."),
+                        "dest":  genai_types.Schema(type=genai_types.Type.STRING, description="Optional output path."),
+                    },
+                    required=["op", "path"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="schedule_task",
+                description=(
+                    "Schedule a command with Windows Task Scheduler. 'create' needs a "
+                    "command and a time (HH:MM, 24h); repeat 'once' or 'daily'. e.g. shut "
+                    "down at 23:00 → command 'shutdown /s /t 0', time '23:00'. Also "
+                    "'list' or 'delete' (by name). Creating a task may need admin rights."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "action":  genai_types.Schema(type=genai_types.Type.STRING, description="create | list | delete"),
+                        "name":    genai_types.Schema(type=genai_types.Type.STRING, description="A short task name."),
+                        "command": genai_types.Schema(type=genai_types.Type.STRING, description="The command line to run at the time."),
+                        "time":    genai_types.Schema(type=genai_types.Type.STRING, description="Time as HH:MM (24-hour)."),
+                        "repeat":  genai_types.Schema(type=genai_types.Type.STRING, description="once (default) | daily"),
+                    },
+                    required=["action"],
                 ),
             ),
         ]
@@ -2481,6 +2878,13 @@ async def _open_path_from_tool(args: dict, db) -> str:
     return f"Opened the {what}: {res['opened']}"
 
 
+async def _open_with_from_tool(args: dict, db) -> str:
+    res = os_control.open_with(args.get("path") or "", args.get("app") or "")
+    if "error" in res:
+        return res["error"]
+    return f"Opened {res['opened']} with {res.get('app', 'the app')}."
+
+
 async def _list_directory_from_tool(args: dict, db) -> str:
     res = os_control.list_directory(args.get("path") or "~")
     if "error" in res:
@@ -2555,6 +2959,338 @@ async def _run_command_from_tool(args: dict, db) -> str:
     })
     return (f"Ready to run `{command}`{where} — I've put an Apply/Reject card up top. "
             "It won't run until you approve.")
+
+
+async def _system_power_from_tool(args: dict, db) -> str:
+    res = os_control.system_power(args.get("action") or "", args.get("delay_minutes") or 0)
+    if "error" in res:
+        return res["error"]
+    a = res.get("action")
+    if a in ("shutdown", "restart") and res.get("in_seconds"):
+        s = res["in_seconds"]
+        return (f"{a.capitalize()} in {s} seconds, Boss — say 'cancel' or run cancel if "
+                "you change your mind.")
+    labels = {"sleep": "Going to sleep.", "hibernate": "Hibernating now.",
+              "lock": "Locked.", "logoff": "Signing you out.", "cancel": "Cancelled — staying on."}
+    return "✓ " + labels.get(a, f"{a} done.")
+
+
+async def _media_control_from_tool(args: dict, db) -> str:
+    res = os_control.media_control(args.get("action") or "", args.get("level"))
+    if "error" in res:
+        return res["error"]
+    a = res.get("action")
+    if a == "set_volume":
+        return f"✓ Volume {res.get('level')}%"
+    return "✓ " + a.replace("_", " ").capitalize()
+
+
+async def _take_screenshot_from_tool(args: dict, db) -> str:
+    res = os_control.screenshot()
+    if "error" in res:
+        return res["error"]
+    # Load it as an active image so the vision model can see it on the next turn.
+    try:
+        with open(res["path"], "rb") as f:
+            data = f.read()
+        from routers.upload import _add_doc
+        _add_doc({"name": "screenshot.png", "kind": "image", "mime": "image/png", "bytes": data})
+    except Exception as e:
+        logger.warning(f"[os] screenshot register failed: {e}")
+    return (f"Captured your screen ({res.get('width')}x{res.get('height')}). It's loaded — "
+            "ask me what you'd like to know about it.")
+
+
+async def _display_control_from_tool(args: dict, db) -> str:
+    res = os_control.display_control(args.get("action") or "")
+    if "error" in res:
+        return res["error"]
+    return "✓ " + res.get("action", "done").replace("_", " ")
+
+
+async def _app_control_from_tool(args: dict, db) -> str:
+    res = os_control.app_control(args.get("action") or "", args.get("name") or "")
+    if "error" in res:
+        return res["error"]
+    a, app = res.get("action"), res.get("app")
+    if a == "close_window":
+        closed = res.get("closed", [])
+        if not closed:
+            return f"I couldn't find an open window titled '{args.get('name')}', Boss."
+        return f"✓ Closed {args.get('name')}"
+    if a == "close" and not res.get("ok"):
+        return f"Couldn't close {app} — it may not be running. ({res.get('detail','')})"
+    verb = {"launch": "Opened", "close": "Closed", "focus": "Switched to"}.get(a, a)
+    return f"✓ {verb} {app}"
+
+
+async def _list_processes_from_tool(args: dict, db) -> str:
+    res = os_control.list_processes()
+    if "error" in res:
+        return res["error"]
+    procs = res.get("processes", [])
+    if not procs:
+        return "Couldn't read the process list."
+    lines = ["Running now (by memory):"]
+    for p in procs:
+        lines.append(f"- {p['name']}: {p['mem_mb']} MB")
+    return "\n".join(lines)
+
+
+async def _find_file_from_tool(args: dict, db) -> str:
+    res = os_control.find_file(args.get("name") or "", args.get("root") or "")
+    if "error" in res:
+        return res["error"]
+    hits = res.get("matches", [])
+    if not hits:
+        return f"No files matching '{args.get('name')}' under {res.get('base')}."
+    tail = " (showing the first ones)" if res.get("truncated") else ""
+    lines = [f"Found {len(hits)} match(es){tail}:"]
+    for h in hits[:20]:
+        lines.append(f"- {h}")
+    return "\n".join(lines)
+
+
+async def _file_operation_from_tool(args: dict, db) -> str:
+    op = (args.get("op") or "").lower().strip()
+    path = (args.get("path") or "").strip()
+    dest = (args.get("dest") or "").strip()
+    # create_folder is additive/safe → do it now. Everything else mutates → gate it.
+    if op in ("create_folder", "mkdir", "new_folder"):
+        res = os_control.run_now("file_op", {"op": op, "path": path})
+        return f"✓ Created folder {res.get('path')}" if res.get("ok") else res.get("error", "Failed.")
+    if op in ("empty_recycle_bin", "empty_recycle", "empty_trash"):
+        target = "recycle bin"
+    elif not path:
+        return "Which file or folder, Boss?"
+    else:
+        target = os_control.expand(path)
+    if path and os_control.is_trusted(path):
+        res = os_control.run_now("file_op", {"op": op, "path": path, "dest": dest})
+        return f"✓ {op} done" if res.get("ok") else res.get("error", "Failed.")
+    aid = os_control.stage("file_op", {"op": op, "path": path, "dest": dest})
+    detail = f"{op}: {target}" + (f"  →  {os_control.expand(dest)}" if dest else "")
+    await push_workspace_update("WIDGET_OSACTION", {
+        "action": "confirm", "id": aid, "kind": "file_op",
+        "title": f"File: {op}", "command": detail, "cwd": "",
+    })
+    return (f"That'll {op} {target} — I've put an Apply/Reject card up. Nothing changes "
+            "until you approve.")
+
+
+async def _clipboard_from_tool(args: dict, db) -> str:
+    action = (args.get("action") or "get").lower().strip()
+    if action == "set":
+        res = os_control.clipboard_set(args.get("text") or "")
+        return "✓ Copied to clipboard" if res.get("ok") else res.get("error", "Failed.")
+    res = os_control.clipboard_get()
+    if "error" in res:
+        return res["error"]
+    txt = res.get("text", "")
+    return f"Clipboard:\n{txt}" if txt else "Your clipboard is empty."
+
+
+async def _type_text_from_tool(args: dict, db) -> str:
+    res = os_control.type_text(args.get("text") or "")
+    return "✓ Typed it" if res.get("ok") else res.get("error", "Failed.")
+
+
+async def _system_status_from_tool(args: dict, db) -> str:
+    s = os_control.system_status()
+    if "error" in s:
+        return s["error"]
+    batt = s.get("battery")
+    b = (f"{batt['percent']}% ({'charging' if batt['plugged'] else 'on battery'})"
+         if batt else "no battery")
+    return (f"Battery {b}. CPU {s.get('cpu_percent')}%, RAM {s.get('ram_percent')}% "
+            f"({s.get('ram_used_gb')}/{s.get('ram_total_gb')} GB). Disk free "
+            f"{s.get('disk_free_gb')} GB. Up {s.get('uptime_hours')}h. IP {s.get('ip')}.")
+
+
+async def _web_from_tool(args: dict, db) -> str:
+    action = (args.get("action") or "").lower().strip()
+    query = args.get("query") or ""
+    if action in ("open", "open_url", "goto"):
+        res = os_control.open_url(query)
+        return f"✓ Opened {res.get('url', query)}" if res.get("ok") else res.get("error", "Failed.")
+    if action in ("search", "google"):
+        res = os_control.web_search(query)
+        return f"✓ Searched for {query}" if res.get("ok") else res.get("error", "Failed.")
+    if action in ("play", "watch", "listen"):
+        res = os_control.play_media(query, args.get("service") or "youtube")
+        return (f"✓ Playing {query} on {res.get('service')}" if res.get("ok")
+                else res.get("error", "Failed."))
+    # default: treat as open
+    res = os_control.open_url(query)
+    return f"✓ Opened {res.get('url', query)}" if res.get("ok") else res.get("error", "Failed.")
+
+
+async def _network_from_tool(args: dict, db) -> str:
+    res = os_control.network(args.get("action") or "", args.get("name"))
+    if "error" in res:
+        return res["error"]
+    a = res.get("action")
+    if "online" in res:
+        return "You're online, Boss." if res["online"] else "Looks like you're offline."
+    if "public_ip" in res:
+        return f"Your public IP is {res['public_ip']}."
+    if "ssid" in res:
+        return f"Connected to {res.get('ssid') or 'no network'}" + (f" ({res['signal']} signal)." if res.get("signal") else ".")
+    if "password" in res:
+        return f"The password for {res.get('name')} is: {res.get('password') or '(not found)'}"
+    if "networks" in res:
+        nets = res["networks"]
+        return "Networks in range: " + (", ".join(nets) if nets else "none found") + "."
+    if a == "wifi_connect":
+        return f"✓ Connecting to {res.get('name')}" if res.get("ok") else f"Couldn't connect: {res.get('detail','')}"
+    note = f" ({res['note']})" if res.get("note") else ""
+    return ("✓ " + (a or "done").replace("_", " ")) if res.get("ok") else f"That didn't work{note}."
+
+
+async def _brightness_from_tool(args: dict, db) -> str:
+    res = os_control.brightness(args.get("action") or "", args.get("level"))
+    if "error" in res:
+        return res["error"]
+    return f"✓ Brightness {res.get('level')}%"
+
+
+async def _window_control_from_tool(args: dict, db) -> str:
+    res = os_control.window_control(args.get("action") or "", args.get("title") or "")
+    if "error" in res:
+        return res["error"]
+    return "✓ " + res.get("action", "done").replace("_", " ") + f" {args.get('title')}"
+
+
+async def _archive_from_tool(args: dict, db) -> str:
+    res = os_control.archive(args.get("op") or "", args.get("path") or "", args.get("dest"))
+    if "error" in res:
+        return res["error"]
+    return f"✓ {res.get('op')} → {res.get('path')}"
+
+
+async def _reveal_file_from_tool(args: dict, db) -> str:
+    res = os_control.reveal_file(args.get("path") or "")
+    if "error" in res:
+        return res["error"]
+    return f"✓ Showing {res.get('path')} in Explorer"
+
+
+async def _system_utility_from_tool(args: dict, db) -> str:
+    action = (args.get("action") or "").lower().strip()
+    res = os_control.system_utility(action)
+    if "error" in res:
+        return res["error"]
+    if "programs" in res:
+        progs = res["programs"]
+        head = f"You have {len(progs)} installed programs. Some of them:"
+        return head + "\n" + "\n".join(f"- {p}" for p in progs[:30])
+    if res.get("action") == "clear_temp":
+        return f"✓ Cleared temp — removed {res.get('removed', 0)} items"
+    if res.get("action") == "restart_explorer":
+        return "✓ Restarted Explorer"
+    return "✓ Done"
+
+
+async def _file_details_from_tool(args: dict, db) -> str:
+    action = (args.get("action") or "").lower().strip()
+    path = args.get("path") or ""
+    if action == "print":
+        res = os_control.print_file(path)
+        return f"✓ Sent {os_control.expand(path)} to the printer" if res.get("ok") else res.get("error", "Failed.")
+    if action in ("recent", "recent_files", "recent_downloads"):
+        res = os_control.recent_files(path or None)
+        if "error" in res:
+            return res["error"]
+        fs = res.get("files", [])
+        if not fs:
+            return f"No recent files in {res.get('base')}."
+        return "Recent in " + os.path.basename(res["base"]) + ":\n" + "\n".join(f"- {f['name']} ({f['when']})" for f in fs)
+    # info
+    res = os_control.path_info(path)
+    if "error" in res:
+        return res["error"]
+    if res.get("kind") == "folder":
+        return f"{res['path']}: {res['size_mb']} MB, {res['files']} files, {res['folders']} folders."
+    return f"{res['path']}: {res['size_mb']} MB, {res.get('ext')} file, modified {res.get('modified')}."
+
+
+async def _batch_rename_from_tool(args: dict, db) -> str:
+    folder = (args.get("folder") or "").strip()
+    prefix = (args.get("prefix") or "").strip()
+    ext = (args.get("ext") or "").strip()
+    if not folder or not prefix:
+        return "I need a folder and a name prefix, Boss."
+    payload = {"folder": folder, "prefix": prefix, "ext": ext}
+    if os_control.is_trusted(folder):
+        res = os_control.run_now("batch_rename", payload)
+        return f"✓ Renamed {res.get('count', 0)} files" if res.get("ok") else res.get("error", "Failed.")
+    aid = os_control.stage("batch_rename", payload)
+    detail = f"Rename all files in {os_control.expand(folder)} → {prefix}_1, {prefix}_2, …" + (f" (only .{ext})" if ext else "")
+    await push_workspace_update("WIDGET_OSACTION", {
+        "action": "confirm", "id": aid, "kind": "file_op", "title": "Batch rename",
+        "command": detail, "cwd": "",
+    })
+    return "That'll rename those files — Apply/Reject card is up. Nothing changes until you approve."
+
+
+async def _close_top_memory_from_tool(args: dict, db) -> str:
+    top = os_control.top_memory_process()
+    if not top:
+        return "Couldn't find a closable app, Boss."
+    name, mem, pid = top
+    mb = round(mem / 1048576)
+    aid = os_control.stage("kill_pid", {"pid": pid})
+    await push_workspace_update("WIDGET_OSACTION", {
+        "action": "confirm", "id": aid, "kind": "file_op", "title": "Close app",
+        "command": f"Force-close {name} — using {mb} MB (PID {pid})", "cwd": "",
+    })
+    return f"{name} is using the most memory ({mb} MB) — Apply/Reject card is up to close it."
+
+
+async def _personalize_from_tool(args: dict, db) -> str:
+    res = os_control.personalize(args.get("action") or "", args.get("value"))
+    if "error" in res:
+        return res["error"]
+    if res.get("mode") in ("dark", "light"):
+        return f"✓ Switched to {res['mode']} mode"
+    if res.get("path"):
+        return "✓ Wallpaper set"
+    if res.get("mode"):
+        return f"✓ Power plan: {res['mode']}"
+    return "✓ Done"
+
+
+async def _image_tool_from_tool(args: dict, db) -> str:
+    res = os_control.image_op(args.get("op") or "", args.get("path") or "",
+                              args.get("dest"), args.get("value"))
+    if "error" in res:
+        return res["error"]
+    return f"✓ {res.get('op')} → {res.get('path')}"
+
+
+async def _pdf_tool_from_tool(args: dict, db) -> str:
+    res = os_control.pdf_op(args.get("op") or "", args.get("path") or "",
+                            args.get("dest"), args.get("pages"), args.get("path2"))
+    if "error" in res:
+        return res["error"]
+    return f"✓ {res.get('op')} ({res.get('count', '')}) → {res.get('path')}"
+
+
+async def _schedule_task_from_tool(args: dict, db) -> str:
+    res = os_control.schedule_task(
+        args.get("action") or "create", args.get("name"), args.get("command"),
+        args.get("time"), args.get("repeat") or "once")
+    if "error" in res:
+        return res["error"]
+    a = res.get("action")
+    if "tasks" in res:
+        ts = res["tasks"]
+        return "Scheduled tasks: " + (", ".join(ts) if ts else "none") + "."
+    if a == "delete":
+        return "✓ Deleted the scheduled task" if res.get("ok") else "Couldn't find that task."
+    if not res.get("ok"):
+        return f"Couldn't schedule it, Boss — may need admin. ({res.get('detail','')})"
+    return f"✓ Scheduled '{res.get('name','').split(chr(92))[-1]}' at {res.get('time')} ({res.get('repeat')})"
 
 
 async def _get_directions_from_tool(args: dict, db) -> str:
@@ -2780,6 +3516,9 @@ async def _run_reasoning_loop(system_persona, user_text, stream_id, allow_search
         tools.append(_build_google_tool())
     if os_control.is_enabled():          # desktop app only — never on the cloud
         tools.append(_build_desktop_tool())
+        tools.append(_build_system_tool())
+        tools.append(_build_extra_tool())
+        tools.append(_build_final_tool())
     model = model_override or (GRACE_CODE_MODEL if deep else GRACE_MODEL)
     config = genai_types.GenerateContentConfig(
         system_instruction=system_persona,
@@ -2902,6 +3641,8 @@ async def _run_reasoning_loop(system_persona, user_text, stream_id, allow_search
                 result_text = await _check_availability_from_tool(dict(fc.args or {}), db)
             elif fc.name == "open_path":
                 result_text = await _open_path_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "open_with":
+                result_text = await _open_with_from_tool(dict(fc.args or {}), db)
             elif fc.name == "list_directory":
                 result_text = await _list_directory_from_tool(dict(fc.args or {}), db)
             elif fc.name == "read_local_file":
@@ -2910,6 +3651,56 @@ async def _run_reasoning_loop(system_persona, user_text, stream_id, allow_search
                 result_text = await _write_local_file_from_tool(dict(fc.args or {}), db)
             elif fc.name == "run_command":
                 result_text = await _run_command_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "system_power":
+                result_text = await _system_power_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "media_control":
+                result_text = await _media_control_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "take_screenshot":
+                result_text = await _take_screenshot_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "display_control":
+                result_text = await _display_control_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "app_control":
+                result_text = await _app_control_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "list_processes":
+                result_text = await _list_processes_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "find_file":
+                result_text = await _find_file_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "file_operation":
+                result_text = await _file_operation_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "clipboard":
+                result_text = await _clipboard_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "type_text":
+                result_text = await _type_text_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "system_status":
+                result_text = await _system_status_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "web":
+                result_text = await _web_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "network":
+                result_text = await _network_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "brightness":
+                result_text = await _brightness_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "window_control":
+                result_text = await _window_control_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "archive":
+                result_text = await _archive_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "reveal_file":
+                result_text = await _reveal_file_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "system_utility":
+                result_text = await _system_utility_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "file_details":
+                result_text = await _file_details_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "batch_rename":
+                result_text = await _batch_rename_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "close_top_memory":
+                result_text = await _close_top_memory_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "personalize":
+                result_text = await _personalize_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "image_tool":
+                result_text = await _image_tool_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "pdf_tool":
+                result_text = await _pdf_tool_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "schedule_task":
+                result_text = await _schedule_task_from_tool(dict(fc.args or {}), db)
             else:
                 result_text = f"Unknown tool '{fc.name}'."
             response_parts.append(
@@ -2921,9 +3712,13 @@ async def _run_reasoning_loop(system_persona, user_text, stream_id, allow_search
 
     response_text = "".join(tts_state["collected"]).strip() or "No response generated."
 
+    # A "✓…" reply is a silent action ack — the operator wants her to just do the
+    # thing, not announce it. Skip voice entirely (the UI shows a subtle line).
+    silent = response_text.lstrip().startswith("✓")
+
     # Text is already on screen (streamed live). Voice is one clip: register the
     # reply and hand the UI a streaming url. Deep/code replies aren't read aloud.
-    if not deep and response_text and response_text != "No response generated.":
+    if not deep and not silent and response_text and response_text != "No response generated.":
         voice_url = register_speech(stream_id, response_text)
         await push_workspace_update(
             "WIDGET_CHAT", {"stream_id": stream_id, "audio_chunk": voice_url, "seq": 0}
@@ -3068,16 +3863,50 @@ async def process_user_intent(payload: CommandInput, db: Session = Depends(get_d
                 if google_integration.is_connected() else ""
             )
             desktop_note = (
-                " You're running as his DESKTOP APP, so you can act on his actual computer. "
-                "Safe, instant tools: open_path (open a file/folder in Explorer/its app), "
-                "list_directory, and read_local_file. Mutating tools need his one-tap OK: "
-                "write_local_file (create/save/edit a file) and run_command (developer "
-                "automation — git, npm, start apps/servers/XAMPP). For those two an "
-                "Apply/Reject card appears; say it's up for approval — never claim it's done "
-                "until it actually runs. When he points you at a REAL path on his machine, "
-                "use these local tools (not the read-only project-code tools). To edit a "
-                "local file: read_local_file first, then write_local_file with the full new "
-                "text."
+                " You're running as his DESKTOP APP — you're an assistant living INSIDE his "
+                "computer, and you can genuinely act on it. When he tells you to do something "
+                "with his files, folders, or apps, DO IT with these tools — don't say you "
+                "can't or that you lack access; you have it. "
+                "Safe, instant (no confirmation): open_path (open a file/folder in "
+                "Explorer/its default app), open_with (open a file in a SPECIFIC app he "
+                "names — Notepad, VS Code, Chrome, etc., e.g. after Windows asks how to open "
+                "it), list_directory (list/COUNT what's in a folder — use this for 'how many "
+                "files are in X'), and read_local_file. Mutating tools need his one-tap OK: "
+                "write_local_file (create/save/edit a file) and run_command (anything else — "
+                "rename/move/delete files, git, npm, start apps/servers/XAMPP). For those two "
+                "an Apply/Reject card appears; say it's up for approval and never claim it's "
+                "done until it runs (a trusted folder skips the card). To edit a file: "
+                "read_local_file first, then write_local_file with the full new text. Prefer "
+                "these local tools over the read-only project-code tools for real paths on "
+                "his machine. For his personal folders just use the plain name as the path "
+                "root — 'Downloads', 'Documents', 'Desktop', 'Pictures', 'Music', 'Videos' "
+                "(e.g. to zip a folder in Pictures pass 'Pictures/comepay') — the app "
+                "resolves them to the real Windows locations. Keep the parent in the path; "
+                "don't pass a bare subfolder name on its own. "
+                "You ALSO control the whole computer: system_power (shut down/restart/sleep/"
+                "hibernate/log off/lock — for shutdown/restart tell him he can say 'cancel'), "
+                "media_control (volume, mute, play/pause, next/previous), take_screenshot "
+                "(then you can see and describe his screen), display_control (monitor off / "
+                "show desktop), app_control (launch/close/focus an app), list_processes, "
+                "find_file (locate a file by name), file_operation (create/rename/move/copy/"
+                "delete — delete goes to the Recycle Bin and pops an approval card), clipboard "
+                "(read/set), type_text (type into the focused window), and system_status "
+                "(battery/CPU/RAM/disk/IP). You're his hands on this machine — when he tells "
+                "you to do something on the computer, just do it with the right tool. "
+                "You can also go on the web (web: open a site / search / play a song or "
+                "video on YouTube or Spotify), manage the network (network: online check, "
+                "public IP, WiFi status/password/connect/disconnect), adjust brightness, "
+                "control windows (window_control: minimize/maximize/snap/always-on-top; "
+                "display_control extend/duplicate for a second monitor), zip/unzip "
+                "(archive), reveal a file in Explorer (reveal_file), and do maintenance "
+                "(system_utility: restart_explorer/clear_temp/list_installed). To READ "
+                "something ALOUD, fetch the text (clipboard/file) and just say it in your "
+                "reply. To read text off the screen, take_screenshot then read it from the "
+                "image. And more: file_details (print a file / folder size / recent files), "
+                "batch_rename, close_top_memory (close the biggest memory hog), personalize "
+                "(wallpaper / dark or light mode / power plan), image_tool (resize/convert/"
+                "compress), pdf_tool (merge/extract/split), and schedule_task (run something "
+                "at a set time, e.g. shut down at 23:00)."
                 if os_control.is_enabled() else ""
             )
             convo_note = conversation_memory.recent_memories_text(db)
@@ -3203,6 +4032,18 @@ async def process_user_intent(payload: CommandInput, db: Session = Depends(get_d
                 "with filler or restate what he said. Only go longer when he genuinely needs "
                 "detail or explicitly asks for it (a list, a walkthrough). Warm does NOT mean "
                 "wordy — a short, warm reply beats a long one every time. "
+                "\n\n"
+                "SILENT ACTIONS — DON'T NARRATE WHAT YOU JUST DID. When you simply CARRY "
+                "OUT an action and there's nothing to answer or report, don't talk about "
+                "it — reply with just '✓', optionally plus a 2-4 word tag like '✓ Opened "
+                "Downloads', '✓ Done', '✓ Task added', '✓ Reminder set'. That makes the app "
+                "show a tiny confirmation and stay SILENT (no voice) — which is what he "
+                "wants: do it, don't announce it. Use this for opening files/folders/apps, "
+                "running commands, and creating/updating/deleting/completing tasks, events, "
+                "reminders, notes, and habits. But reply NORMALLY (no ✓) when you're "
+                "ANSWERING a question, REPORTING results or findings, running into a PROBLEM "
+                "or error, or needing to CLARIFY. Rule of thumb: he asked you to DO "
+                "something → '✓'; he asked you something → answer it. "
                 "\n\n"
                 "WHO YOU'RE WITH: You genuinely care about him and you're invested in his "
                 "life, not just his tasks. You remember what's going on with him and you "

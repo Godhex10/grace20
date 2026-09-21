@@ -1,6 +1,7 @@
 # routers/router_pipeline.py
 import os
 import re
+import time
 import json
 import uuid
 import asyncio
@@ -3562,6 +3563,8 @@ async def _run_reasoning_loop(system_persona, user_text, stream_id, allow_search
     `deep` = code/debugging task: bigger output budget, a stronger model if
     configured, and (below) no voice — reviews are for reading, not listening.
     """
+    global _last_activity
+    _last_activity = time.time()   # real work → keep-warm stays quiet
     tools = []
     if allow_search:
         tools.append(_build_search_tool())
@@ -3820,6 +3823,152 @@ class CommandInput(BaseModel):
         return v
 
 
+# ── Keep-warm: stop the model connection going cold, so the first reply after an
+# idle gap is ~2s instead of ~6s. Pings only when the app is open and idle. ─────
+_last_activity = time.time()
+
+
+async def keep_warm_loop():
+    from core.sse import subscriber_count
+    await asyncio.sleep(45)
+    while True:
+        try:
+            idle = time.time() - _last_activity
+            if grace_llm_client is not None and subscriber_count() > 0 and idle > 150:
+                await asyncio.to_thread(
+                    lambda: grace_llm_client.models.generate_content(
+                        model=GRACE_MODEL, contents="ok",
+                        config=genai_types.GenerateContentConfig(max_output_tokens=1),
+                    )
+                )
+        except Exception as e:
+            logger.debug(f"[keepwarm] skipped: {e}")
+        await asyncio.sleep(120)
+
+
+# ── Instant, no-LLM fast-path for the most common desktop commands ───────────
+def _os_fastpath(text: str):
+    """Handle a short, unambiguous desktop command with ZERO model latency.
+    Returns (response_text, silent) or None. Desktop app only."""
+    if not os_control.is_enabled():
+        return None
+    t = " " + text.strip().lower().rstrip(" .!") + " "
+    raw = text.strip().lower().rstrip(" .!?")
+
+    # instant document search via the Windows index — only pure "find X" queries
+    # (compound ones like "find X and open it" fall through to the model)
+    ms = re.match(r"(?:find|locate|search for|look for|where(?:'s| is| are)?)\s+"
+                  r"(?:me\s+)?(?:my |the |a |an |all )*(.+)", raw)
+    if ms and " and " not in raw and not re.search(
+            r"\b(open|delete|move|rename|email|send|zip|print|show me)\b", raw):
+        term = re.sub(r"\b(files?|documents?|docs?|folders?)\b\s*$", "", ms.group(1).strip()).strip()
+        if term:
+            res = os_control.find_file(term)
+            os_control.remember_finds(res.get("matches", []))
+            hits = res.get("matches", [])
+            if not hits:
+                return f"Couldn't find anything named '{term}', Boss.", False
+            top = "\n".join(f"- {h}" for h in hits[:8])
+            more = f"\n…and {len(hits) - 8} more" if len(hits) > 8 else ""
+            return f"Found {len(hits)} for '{term}':\n{top}{more}", True
+
+    # instant open of a folder / path / selected item / a clearly-named document —
+    # context-aware: it prefers the folder you currently have open in Explorer.
+    mo = re.match(r"(?:open|select|launch)\s+(?:up\s+)?(?:my |the |a |an )?(.+)", raw)
+    if mo and " and " not in raw and " with " not in raw:
+        target = re.sub(r"\b(folder|directory)\b", "", mo.group(1).strip()).strip().rstrip("?").strip()
+        _EXE = (".exe", ".msi", ".bat", ".cmd", ".ps1", ".vbs", ".lnk")
+        # "open this / it / the selected one" → open whatever's selected in Explorer
+        if re.fullmatch(r"(this|it|that|selected|the selected( one| file| item)?|the highlighted( one)?)", target):
+            ctx = os_control.find_in_active_folder("")
+            sel = (ctx or {}).get("selected", [])
+            if len(sel) == 1:
+                r = os_control.open_path(sel[0])
+                return (f"✓ Opened {os.path.basename(sel[0])}" if r.get("ok") else r.get("error", "")), True
+            # nothing / several selected → let the model handle it
+        else:
+            _KF = {"downloads": "Downloads", "download": "Downloads", "documents": "Documents",
+                   "document": "Documents", "desktop": "Desktop", "pictures": "Pictures",
+                   "photos": "Pictures", "music": "Music", "videos": "Videos", "video": "Videos"}
+            if target in _KF:
+                r = os_control.open_path(_KF[target])
+                return (f"✓ Opened {_KF[target]}" if r.get("ok") else r.get("error", "")), True
+            if re.search(r"[:\\/~]", target):                    # an explicit path
+                r = os_control.open_path(target)
+                if r.get("ok"):
+                    return f"✓ Opened {os.path.basename(r['opened']) or r['opened']}", True
+            else:                                                # a named document
+                picked = None
+                ctx = os_control.find_in_active_folder(target)   # the open folder first
+                if ctx and len(ctx["matches"]) == 1:
+                    picked = ctx["matches"][0]
+                elif ctx and len(ctx["matches"]) > 1:
+                    os_control.remember_finds(ctx["matches"])     # ambiguous → defer
+                else:
+                    res = os_control.find_file(target)            # else the global index
+                    m = res.get("matches", [])
+                    os_control.remember_finds(m)
+                    if len(m) == 1:
+                        picked = m[0]
+                if picked and not picked.lower().endswith(_EXE):
+                    r = os_control.open_path(picked)
+                    return (f"✓ Opened {os.path.basename(picked)}" if r.get("ok") else r.get("error", "")), True
+        # ambiguous / not found / an app / an executable → defer to the model
+
+    # volume
+    m = re.search(r"\bvolume (?:to |at )?(\d{1,3})\b", t)
+    if m:
+        r = os_control.media_control("set_volume", int(m.group(1)))
+        return (f"✓ Volume {r.get('level')}%" if r.get("ok") else r.get("error", "Couldn't set volume.")), True
+    if re.search(r"\b(volume up|turn it up|turn up the volume|louder)\b", t):
+        os_control.media_control("volume_up"); return "✓ Volume up", True
+    if re.search(r"\b(volume down|turn it down|turn down the volume|quieter|lower the volume)\b", t):
+        os_control.media_control("volume_down"); return "✓ Volume down", True
+    if "mic" not in t and re.search(r"\b(mute|unmute)\b", t):
+        os_control.media_control("mute"); return "✓ Muted", True
+    if re.search(r"\b(pause|play ?pause)\b", t):
+        os_control.media_control("play_pause"); return "✓", True
+    if re.search(r"\bnext (song|track)\b", t) or re.search(r"\bskip (this )?(song|track)\b", t):
+        os_control.media_control("next"); return "✓ Next", True
+    if re.search(r"\b(previous|last) (song|track)\b", t):
+        os_control.media_control("previous"); return "✓ Previous", True
+
+    # brightness
+    m = re.search(r"\bbrightness (?:to |at |by )?(\d{1,3})\b", t) or \
+        re.search(r"\b(?:set|reduce|lower|dim|increase|raise|change) (?:the )?brightness (?:to |by )?(\d{1,3})\b", t)
+    if m:
+        r = os_control.brightness("set", int(m.group(1)))
+        return (f"✓ Brightness {r.get('level')}%" if r.get("ok") else r.get("error", "")), True
+    if re.search(r"\b(brightness up|brighter|increase brightness)\b", t):
+        r = os_control.brightness("up"); return (f"✓ Brightness {r.get('level')}%" if r.get("ok") else r.get("error", "")), True
+    if re.search(r"\b(brightness down|dimmer|reduce brightness|lower brightness|dim the screen)\b", t):
+        r = os_control.brightness("down"); return (f"✓ Brightness {r.get('level')}%" if r.get("ok") else r.get("error", "")), True
+
+    # display
+    if re.search(r"\b(show (the |my )?desktop|minimi[sz]e (all|everything))\b", t):
+        os_control.display_control("show_desktop"); return "✓ Showing desktop", True
+    if re.search(r"\bturn off (my |the )?(monitor|screen|display)\b", t):
+        os_control.display_control("monitor_off"); return "✓ Monitor off", True
+
+    # power: ONLY the harmless 'cancel' is fast-pathed. Shutdown/restart/sleep/
+    # hibernate/logoff deliberately go through the model — a 2s cost, but it means
+    # no regex misfire can ever sleep or reboot the machine on its own.
+    if re.search(r"\bcancel (the )?(shut ?down|restart|reboot)\b", t):
+        os_control.system_power("cancel"); return "✓ Cancelled — staying on", True
+
+    # status (spoken answers)
+    if re.search(r"\b(battery|charge)\b", t) and re.search(r"\b(what|how much|level|percent|status|left|is my|my)\b", t):
+        s = os_control.system_status(); b = s.get("battery")
+        if not b:
+            return "This machine doesn't report a battery, Boss.", False
+        return f"Battery's at {b['percent']}%, {'charging' if b['plugged'] else 'on battery'}.", False
+    if re.search(r"\b(am i online|do i have internet|are we online|is the internet (up|working))\b", t):
+        r = os_control.network("online")
+        return ("You're online, Boss." if r.get("online") else "Looks like you're offline, Boss."), False
+
+    return None
+
+
 @router.post("/process")
 async def process_user_intent(payload: CommandInput, db: Session = Depends(get_db)):
     user_raw_string = payload.text.strip()
@@ -3892,6 +4041,22 @@ async def process_user_intent(payload: CommandInput, db: Session = Depends(get_d
         if audio_path:
             modality = "hybrid"
             streamed_audio = True
+
+    # Instant, no-LLM handling of common desktop commands (volume, brightness,
+    # power, media, status). Skips Gemini entirely → the reply is immediate.
+    if not tier_1_matched:
+        _fp = _os_fastpath(text_lower)
+        if _fp is not None:
+            response_text, _fp_silent = _fp
+            triggered_widget = "WIDGET_CHAT"
+            tier_1_matched = True
+            if _fp_silent:
+                streamed_audio = True          # silent action — no voice
+            else:
+                audio_path = await miso_voice.generate_speech(response_text)
+                if audio_path:
+                    modality = "hybrid"
+                    streamed_audio = True
 
     if not tier_1_matched:
         if grace_llm_client is not None:

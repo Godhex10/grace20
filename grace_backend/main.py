@@ -1,4 +1,5 @@
 # main.py
+import asyncio
 import datetime
 import os
 from contextlib import asynccontextmanager
@@ -30,7 +31,9 @@ async def lifespan(app: FastAPI):
     await miso_voice.start_cleanup_task()
     await reminder_service.start()
     await proactive_monitor.start()      # desktop-only watchers (no-op on cloud)
+    _kw = asyncio.create_task(router_pipeline.keep_warm_loop())  # kill cold-start lag
     yield
+    _kw.cancel()
     await reminder_service.stop()
     await proactive_monitor.stop()
 

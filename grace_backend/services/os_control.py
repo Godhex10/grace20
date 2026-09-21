@@ -579,6 +579,31 @@ def list_processes(top: int = 12) -> dict:
 
 
 # ── File search & operations ────────────────────────────────────────────────
+def _win_index_search(name: str, max_results: int = 25):
+    """Query the Windows Search index (milliseconds) instead of crawling folders.
+    Returns a list of full paths, or None if the index isn't available."""
+    if sys.platform != "win32":
+        return None
+    ps = (
+        "$q = $env:GRACE_Q -replace \"'\",\"''\";"
+        f"$sql = \"SELECT TOP {int(max_results)} System.ItemPathDisplay FROM SystemIndex "
+        "WHERE System.FileName LIKE '%$q%'\";"
+        "$c=New-Object -ComObject ADODB.Connection;"
+        "$c.Open(\"Provider=Search.CollatorDSO;Extended Properties='Application=Windows';\");"
+        "$r=$c.Execute($sql);"
+        "while(-not $r.EOF){$r.Fields.Item('System.ItemPathDisplay').Value;$r.MoveNext()}"
+    )
+    try:
+        env = dict(os.environ, GRACE_Q=str(name))
+        p = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                           capture_output=True, text=True, timeout=15, env=env)
+        if p.returncode != 0:
+            return None
+        return [ln.strip() for ln in (p.stdout or "").splitlines() if ln.strip()]
+    except Exception:
+        return None
+
+
 def find_file(name: str, root: str = None, max_results: int = 25, max_scan: int = 200000) -> dict:
     q = (name or "").lower().strip()
     if not q:
@@ -586,8 +611,18 @@ def find_file(name: str, root: str = None, max_results: int = 25, max_scan: int 
     base = expand(root) if root else os.path.expanduser("~")
     if not os.path.isdir(base):
         return {"error": f"Not a folder: {base}."}
+    # Fast path: the Windows Search index (ms) instead of a full folder crawl.
+    idx = _win_index_search(name, max_results)
+    if idx:
+        if root:
+            bl = base.lower()
+            idx = [p for p in idx if p.lower().startswith(bl)]
+        if idx:
+            return {"ok": True, "base": base, "matches": idx[:max_results],
+                    "truncated": len(idx) >= max_results}
+    # Fallback: crawl the folder tree (index off, or nothing indexed under `root`).
     skip = {"node_modules", ".git", "AppData", "$Recycle.Bin", "Windows", "__pycache__"}
-    hits, scanned = [], 0
+    hits, scanned, start = [], 0, time.time()
     try:
         for dp, dns, fns in os.walk(base):
             dns[:] = [d for d in dns if d not in skip]
@@ -597,11 +632,60 @@ def find_file(name: str, root: str = None, max_results: int = 25, max_scan: int 
                     hits.append(os.path.join(dp, f))
                     if len(hits) >= max_results:
                         return {"ok": True, "base": base, "matches": hits, "truncated": True}
-            if scanned > max_scan:
+            # Bound the crawl so a deep, unindexed tree can't feel stuck.
+            if scanned > max_scan or (time.time() - start) > 3.0:
                 return {"ok": True, "base": base, "matches": hits, "truncated": True}
         return {"ok": True, "base": base, "matches": hits, "truncated": False}
     except Exception as e:
         return {"error": str(e)}
+
+
+def active_explorer_folder() -> dict:
+    """The File Explorer window currently in focus (else the most recent one):
+    {ok, path, items:[names], selected:[names]}. Lets Grace act on 'this folder'."""
+    if sys.platform != "win32":
+        return {"ok": False}
+    ps = (
+        "$sh=New-Object -ComObject Shell.Application;"
+        "Add-Type -Namespace W -Name U -MemberDefinition "
+        "'[DllImport(\"user32.dll\")] public static extern System.IntPtr GetForegroundWindow();';"
+        "$fg=[W.U]::GetForegroundWindow();$pick=$null;"
+        "foreach($w in @($sh.Windows())){try{$p=$w.Document.Folder.Self.Path;"
+        "if(-not $p){continue};"
+        "if([System.IntPtr]$w.HWND -eq $fg){$pick=$w;break};"
+        "if(-not $pick){$pick=$w}}catch{}};"
+        "if($pick){'PATH::'+$pick.Document.Folder.Self.Path;"
+        "foreach($it in @($pick.Document.Folder.Items())){'ITEM::'+$it.Path};"
+        "foreach($s in @($pick.Document.SelectedItems())){'SEL::'+$s.Path}}"
+    )
+    try:
+        p = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                           capture_output=True, text=True, timeout=15)
+        path, items, sel = None, [], []
+        for ln in (p.stdout or "").splitlines():
+            ln = ln.rstrip("\r\n")
+            if ln.startswith("PATH::"):
+                path = ln[6:]
+            elif ln.startswith("ITEM::"):     # real full paths (with extension)
+                items.append(ln[6:])
+            elif ln.startswith("SEL::"):
+                sel.append(ln[5:])
+        if path:
+            return {"ok": True, "path": path, "items": items, "selected": sel}
+        return {"ok": False}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def find_in_active_folder(name: str):
+    """Match `name` against items in the folder currently open in Explorer.
+    Items are already real full paths. Returns {path, matches, selected} or None."""
+    a = active_explorer_folder()
+    if not a.get("ok"):
+        return None
+    q = (name or "").lower().strip()
+    matches = [it for it in a.get("items", []) if q and q in os.path.basename(it).lower()]
+    return {"path": a["path"], "matches": matches, "selected": a.get("selected", [])}
 
 
 def do_file_op(op: str, path: str, dest: str = None) -> dict:

@@ -529,6 +529,23 @@ def close_window(title: str) -> dict:
         return {"error": str(e)}
 
 
+def foreground_title() -> str:
+    """Title of the window currently in focus (for 'this window' commands)."""
+    if sys.platform != "win32" or not ctypes:
+        return ""
+    try:
+        u = ctypes.windll.user32
+        h = u.GetForegroundWindow()
+        n = u.GetWindowTextLengthW(h)
+        if n <= 0:
+            return ""
+        b = ctypes.create_unicode_buffer(n + 1)
+        u.GetWindowTextW(h, b, n + 1)
+        return b.value or ""
+    except Exception:
+        return ""
+
+
 def app_control(action: str, name: str) -> dict:
     action = (action or "").lower().strip()
     name = (name or "").strip()
@@ -686,6 +703,104 @@ def find_in_active_folder(name: str):
     q = (name or "").lower().strip()
     matches = [it for it in a.get("items", []) if q and q in os.path.basename(it).lower()]
     return {"path": a["path"], "matches": matches, "selected": a.get("selected", [])}
+
+
+def word_op(path: str, action: str, find: str = None, replace: str = None,
+            text: str = None, visible: bool = True) -> dict:
+    """Edit a real Word document via Word's own automation (COM): find-replace,
+    append a paragraph, or insert text at the start — saved in place. The file is
+    backed up to .grace.bak first. Windows + Word required."""
+    if sys.platform != "win32":
+        return {"error": "Editing in Word is Windows-only."}
+    full = expand(path)
+    if not os.path.isfile(full):
+        alt = _recent_match(path)
+        if alt:
+            full = alt
+    if not os.path.isfile(full):
+        return {"error": f"Couldn't find that document: {path}"}
+    if not full.lower().endswith((".docx", ".doc", ".rtf")):
+        return {"error": "That isn't a Word document."}
+    action = (action or "").lower().strip()
+    try:
+        shutil.copy2(full, full + ".grace.bak")
+    except Exception:
+        pass
+    vis = "$true" if visible else "$false"
+    open_ = ("$w=New-Object -ComObject Word.Application;$w.Visible=" + vis + ";"
+             "$d=$w.Documents.Open($env:WORD_FILE);")
+    if action in ("replace", "find_replace", "replace_all"):
+        do = ("$null=$d.Content.Find.Execute($env:WORD_FIND,$false,$false,$false,"
+              "$false,$false,$true,1,$true,$env:WORD_REPLACE,2);'OK';")
+    elif action in ("append", "add"):
+        do = "$null=$d.Content.InsertAfter([char]13 + $env:WORD_TEXT);'OK';"
+    elif action in ("insert", "prepend", "insert_start"):
+        do = "$r=$d.Range(0,0);$null=$r.InsertAfter($env:WORD_TEXT + [char]13);'OK';"
+    else:
+        return {"error": f"Unknown Word action '{action}'."}
+    close_ = "$d.Save();" + ("" if visible else "$d.Close();$w.Quit();")
+    ps = open_ + do + close_
+    env = dict(os.environ, WORD_FILE=full, WORD_FIND=(find or ""),
+               WORD_REPLACE=(replace or ""), WORD_TEXT=(text or ""))
+    try:
+        p = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                           capture_output=True, text=True, timeout=90, env=env)
+        if "OK" in (p.stdout or ""):
+            return {"ok": True, "action": action, "file": full}
+        return {"error": (p.stderr or p.stdout or "Word edit failed.").strip()[:200]}
+    except subprocess.TimeoutExpired:
+        return {"error": "Word took too long to respond."}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def excel_op(path: str, action: str, cell: str = None, value: str = None,
+             find: str = None, replace: str = None, visible: bool = True) -> dict:
+    """Edit a real Excel workbook via Excel automation (COM): set a cell, append a
+    row, or find-replace — saved in place, backed up to .grace.bak first."""
+    if sys.platform != "win32":
+        return {"error": "Editing in Excel is Windows-only."}
+    full = expand(path)
+    if not os.path.isfile(full):
+        alt = _recent_match(path)
+        if alt:
+            full = alt
+    if not os.path.isfile(full):
+        return {"error": f"Couldn't find that spreadsheet: {path}"}
+    if not full.lower().endswith((".xlsx", ".xlsm", ".xls", ".csv")):
+        return {"error": "That isn't an Excel spreadsheet."}
+    action = (action or "").lower().strip()
+    try:
+        shutil.copy2(full, full + ".grace.bak")
+    except Exception:
+        pass
+    vis = "$true" if visible else "$false"
+    open_ = ("$x=New-Object -ComObject Excel.Application;$x.Visible=" + vis + ";"
+             "$x.DisplayAlerts=$false;$wb=$x.Workbooks.Open($env:XL_FILE);$ws=$wb.ActiveSheet;")
+    if action in ("set_cell", "set", "cell"):
+        do = "$ws.Range($env:XL_CELL).Value2=$env:XL_VALUE;'OK';"
+    elif action in ("append_row", "add_row", "append", "add"):
+        do = ("$r=$ws.Cells($ws.Rows.Count,1).End(-4162).Row+1;"
+              "$v=$env:XL_VALUE -split ',';"
+              "for($i=0;$i -lt $v.Length;$i++){$ws.Cells($r,$i+1).Value2=$v[$i].Trim()};'OK';")
+    elif action in ("replace", "find_replace"):
+        do = "$null=$ws.Cells.Replace($env:XL_FIND,$env:XL_REPLACE);'OK';"
+    else:
+        return {"error": f"Unknown Excel action '{action}'."}
+    close_ = "$wb.Save();" + ("" if visible else "$wb.Close();$x.Quit();")
+    ps = open_ + do + close_
+    env = dict(os.environ, XL_FILE=full, XL_CELL=(cell or "A1"),
+               XL_VALUE=(value or ""), XL_FIND=(find or ""), XL_REPLACE=(replace or ""))
+    try:
+        p = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                           capture_output=True, text=True, timeout=90, env=env)
+        if "OK" in (p.stdout or ""):
+            return {"ok": True, "action": action, "file": full}
+        return {"error": (p.stderr or p.stdout or "Excel edit failed.").strip()[:200]}
+    except subprocess.TimeoutExpired:
+        return {"error": "Excel took too long to respond."}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def do_file_op(op: str, path: str, dest: str = None) -> dict:

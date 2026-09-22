@@ -2573,6 +2573,54 @@ def _build_final_tool():
                     required=["enabled"],
                 ),
             ),
+            genai_types.FunctionDeclaration(
+                name="edit_word",
+                description=(
+                    "Edit a real Microsoft Word document IN PLACE using Word itself. "
+                    "action 'replace' = find `find` and swap for `replace` (all "
+                    "occurrences); 'append' = add `text` as a new paragraph at the end; "
+                    "'insert' = add `text` at the very start. Opens the doc in Word so he "
+                    "watches it change (visible=false to do it silently). The original is "
+                    "backed up first. Use for 'in report.docx change Acme to Zenith', 'add "
+                    "a closing line to my letter'. For a big rewrite/summary/translation, "
+                    "prefer the document editor (create_document) instead."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "file":    genai_types.Schema(type=genai_types.Type.STRING, description="The Word doc — path or name (e.g. 'report.docx')."),
+                        "action":  genai_types.Schema(type=genai_types.Type.STRING, description="replace | append | insert"),
+                        "find":    genai_types.Schema(type=genai_types.Type.STRING, description="Text to find (for replace)."),
+                        "replace": genai_types.Schema(type=genai_types.Type.STRING, description="Replacement text (for replace)."),
+                        "text":    genai_types.Schema(type=genai_types.Type.STRING, description="Text to add (for append/insert)."),
+                        "visible": genai_types.Schema(type=genai_types.Type.BOOLEAN, description="Open the doc visibly in Word (default true)."),
+                    },
+                    required=["file", "action"],
+                ),
+            ),
+            genai_types.FunctionDeclaration(
+                name="edit_excel",
+                description=(
+                    "Edit a real Excel spreadsheet IN PLACE using Excel itself. action "
+                    "'set_cell' = set `cell` (like 'B2') to `value`; 'append_row' = add a "
+                    "row where `value` is the comma-separated cells (e.g. 'John,42,Lagos'); "
+                    "'replace' = find `find`, swap for `replace`. Opens in Excel so he sees "
+                    "it; original backed up. Use for 'change B2 to 500', 'add a row with …'."
+                ),
+                parameters=genai_types.Schema(
+                    type=genai_types.Type.OBJECT,
+                    properties={
+                        "file":    genai_types.Schema(type=genai_types.Type.STRING, description="The spreadsheet — path or name (e.g. 'budget.xlsx')."),
+                        "action":  genai_types.Schema(type=genai_types.Type.STRING, description="set_cell | append_row | replace"),
+                        "cell":    genai_types.Schema(type=genai_types.Type.STRING, description="Cell reference for set_cell (e.g. 'B2')."),
+                        "value":   genai_types.Schema(type=genai_types.Type.STRING, description="Value for set_cell, or comma-separated cells for append_row."),
+                        "find":    genai_types.Schema(type=genai_types.Type.STRING, description="Text to find (for replace)."),
+                        "replace": genai_types.Schema(type=genai_types.Type.STRING, description="Replacement (for replace)."),
+                        "visible": genai_types.Schema(type=genai_types.Type.BOOLEAN, description="Open visibly in Excel (default true)."),
+                    },
+                    required=["file", "action"],
+                ),
+            ),
         ]
     )
 
@@ -3353,6 +3401,36 @@ async def _proactive_alerts_from_tool(args: dict, db) -> str:
     return f"✓ {'Enabled' if want else 'Disabled'} {', '.join(changed)} alert(s)"
 
 
+async def _edit_word_from_tool(args: dict, db) -> str:
+    res = os_control.word_op(
+        args.get("file") or "", args.get("action") or "",
+        find=args.get("find"), replace=args.get("replace"),
+        text=args.get("text"), visible=args.get("visible", True))
+    if "error" in res:
+        return res["error"]
+    a = res.get("action")
+    verb = {"replace": "made the change", "find_replace": "made the change",
+            "replace_all": "made the change", "append": "added the text",
+            "add": "added the text", "insert": "inserted the text",
+            "prepend": "inserted the text"}.get(a, "edited it")
+    return f"✓ {verb.capitalize()} in {os.path.basename(res['file'])} — it's saved."
+
+
+async def _edit_excel_from_tool(args: dict, db) -> str:
+    res = os_control.excel_op(
+        args.get("file") or "", args.get("action") or "",
+        cell=args.get("cell"), value=args.get("value"),
+        find=args.get("find"), replace=args.get("replace"),
+        visible=args.get("visible", True))
+    if "error" in res:
+        return res["error"]
+    a = res.get("action")
+    verb = {"set_cell": "updated the cell", "set": "updated the cell", "cell": "updated the cell",
+            "append_row": "added the row", "add_row": "added the row", "append": "added the row",
+            "replace": "made the change", "find_replace": "made the change"}.get(a, "edited it")
+    return f"✓ {verb.capitalize()} in {os.path.basename(res['file'])} — saved."
+
+
 async def _confirm_actions_from_tool(args: dict, db) -> str:
     on = os_control.set_confirm(bool(args.get("enabled")))
     return ("✓ I'll ask before running risky actions now." if on
@@ -3773,6 +3851,10 @@ async def _run_reasoning_loop(system_persona, user_text, stream_id, allow_search
                 result_text = await _proactive_alerts_from_tool(dict(fc.args or {}), db)
             elif fc.name == "confirm_actions":
                 result_text = await _confirm_actions_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "edit_word":
+                result_text = await _edit_word_from_tool(dict(fc.args or {}), db)
+            elif fc.name == "edit_excel":
+                result_text = await _edit_excel_from_tool(dict(fc.args or {}), db)
             else:
                 result_text = f"Unknown tool '{fc.name}'."
             response_parts.append(
@@ -3855,9 +3937,22 @@ def _os_fastpath(text: str):
     t = " " + text.strip().lower().rstrip(" .!") + " "
     raw = text.strip().lower().rstrip(" .!?")
 
+    # web: search the web / play music (opening a site is handled in the open block)
+    wm = re.match(r"(?:google|search(?: the web)? for|look up)\s+(.+)", raw)
+    if wm and " and " not in raw:
+        q = wm.group(1).strip()
+        os_control.web_search(q)
+        return f"✓ Searched the web for {q[:40]}", True
+    pm = re.match(r"play\s+(.+?)(?:\s+on\s+(youtube|spotify|yt))?$", raw)
+    if pm and pm.group(1).strip() not in ("pause", "music", "it", "this", "that", "something"):
+        q = pm.group(1).strip()
+        svc = "spotify" if (pm.group(2) or "").startswith("spot") else "youtube"
+        os_control.play_media(q, svc)
+        return f"✓ Playing {q[:30]} on {svc}", True
+
     # instant document search via the Windows index — only pure "find X" queries
     # (compound ones like "find X and open it" fall through to the model)
-    ms = re.match(r"(?:find|locate|search for|look for|where(?:'s| is| are)?)\s+"
+    ms = re.match(r"(?:find|locate|look for|where(?:'s| is| are)?)\s+"
                   r"(?:me\s+)?(?:my |the |a |an |all )*(.+)", raw)
     if ms and " and " not in raw and not re.search(
             r"\b(open|delete|move|rename|email|send|zip|print|show me)\b", raw):
@@ -3897,6 +3992,10 @@ def _os_fastpath(text: str):
                 r = os_control.open_path(target)
                 if r.get("ok"):
                     return f"✓ Opened {os.path.basename(r['opened']) or r['opened']}", True
+            elif re.match(r"^[\w][\w.-]*\.(?:com|org|net|io|co|gov|edu|ng|dev|app|ai|me|tv|uk)\b", target):
+                r = os_control.open_url(target)                  # a website
+                if r.get("ok"):
+                    return f"✓ Opened {target}", True
             else:                                                # a named document
                 picked = None
                 ctx = os_control.find_in_active_folder(target)   # the open folder first
@@ -3914,6 +4013,120 @@ def _os_fastpath(text: str):
                     r = os_control.open_path(picked)
                     return (f"✓ Opened {os.path.basename(picked)}" if r.get("ok") else r.get("error", "")), True
         # ambiguous / not found / an app / an executable → defer to the model
+
+    # ── screenshot ──
+    if raw in ("screenshot", "screen shot", "take a screenshot", "grab a screenshot",
+               "take a screen shot", "capture my screen", "capture the screen"):
+        res = os_control.screenshot()
+        if res.get("ok"):
+            try:
+                with open(res["path"], "rb") as f:
+                    from routers.upload import _add_doc
+                    _add_doc({"name": "screenshot.png", "kind": "image",
+                              "mime": "image/png", "bytes": f.read()})
+            except Exception:
+                pass
+            return (f"Grabbed your screen ({res.get('width')}x{res.get('height')}). "
+                    "Ask me what you'd like to know about it."), False
+        return res.get("error", "Screenshot failed."), False
+
+    # ── theme ──
+    if re.search(r"\b(dark mode|dark theme|go dark)\b", raw):
+        os_control.personalize("dark"); return "✓ Dark mode", True
+    if re.search(r"\b(light mode|light theme|go light)\b", raw):
+        os_control.personalize("light"); return "✓ Light mode", True
+
+    # ── maintenance ──
+    if re.search(r"\brestart (windows )?explorer\b", raw) or "restart the taskbar" in raw:
+        os_control.system_utility("restart_explorer"); return "✓ Restarted Explorer", True
+    if re.search(r"\b(clear|clean|delete)( my| the)? temp( files| folder)?\b", raw):
+        res = os_control.system_utility("clear_temp")
+        return f"✓ Cleared {res.get('removed', 0)} temp items", True
+    if re.search(r"\b(installed programs|installed apps|what'?s installed|list (my )?programs|my programs)\b", raw):
+        res = os_control.system_utility("list_installed"); progs = res.get("programs", [])
+        return ((f"You've got {len(progs)} programs installed. A few: " + ", ".join(progs[:12]) + ".")
+                if progs else "Couldn't list installed programs."), False
+
+    # ── system info ──
+    if re.search(r"\b(public ip|my ip|ip address|what'?s my ip)\b", raw):
+        r = os_control.network("public_ip")
+        return (f"Your public IP is {r.get('public_ip')}." if r.get("public_ip")
+                else "Couldn't fetch your IP."), False
+    if re.search(r"\b(wi-?fi password|network password)\b", raw):
+        r = os_control.network("wifi_password")
+        return (f"The password for {r.get('name')} is: {r.get('password')}" if r.get("password")
+                else "Couldn't read the WiFi password."), False
+    if re.search(r"\b(what'?s my wi-?fi|which (wi-?fi|network)|what network am i|wi-?fi name|am i connected to)\b", raw):
+        r = os_control.network("wifi_status")
+        return ((f"You're on {r.get('ssid')}" + (f", {r['signal']} signal." if r.get('signal') else "."))
+                if r.get("ssid") else "You're not connected to any WiFi."), False
+    if re.search(r"\b(disk space|space left|storage (left|space)|how much (space|storage|disk)|free space)\b", raw):
+        s = os_control.system_status()
+        return f"You've got {s.get('disk_free_gb')} GB free on your main drive.", False
+    if re.search(r"\b(system status|system info|how'?s my (computer|pc|system)|pc status)\b", raw):
+        s = os_control.system_status(); b = s.get("battery")
+        bt = f"Battery {b['percent']}%, " if b else ""
+        return (f"{bt}CPU {s.get('cpu_percent')}%, RAM {s.get('ram_percent')}%, "
+                f"{s.get('disk_free_gb')} GB free, up {s.get('uptime_hours')}h."), False
+
+    # ── apps & windows ──
+    _APPS = ("spotify", "chrome", "google chrome", "word", "excel", "powerpoint", "notepad",
+             "wordpad", "edge", "microsoft edge", "firefox", "vlc", "code", "vs code",
+             "visual studio code", "explorer", "file explorer", "calculator", "paint",
+             "outlook", "teams", "discord", "slack", "zoom", "photoshop", "brave", "opera",
+             "steam", "whatsapp", "telegram")
+    mA = re.match(r"(?:open|launch|start|fire up)\s+(?:up\s+)?(.+)", raw)
+    if mA and mA.group(1).strip() in _APPS:
+        os_control.app_control("launch", mA.group(1).strip())
+        return f"✓ Opening {mA.group(1).strip()}", True
+    mC = re.match(r"(?:close|quit|kill)\s+(.+)", raw)
+    if mC:
+        tgt = mC.group(1).strip()
+        if "window" in tgt or tgt in ("this", "it"):
+            title = re.sub(r"\b(this|the|window|it)\b", "", tgt).strip() or os_control.foreground_title()
+            res = os_control.close_window(title)
+            return ((f"✓ Closed {title or 'the window'}") if res.get("closed")
+                    else f"Couldn't find a window called '{title}'."), True
+        if tgt in _APPS:
+            os_control.app_control("close", tgt); return f"✓ Closed {tgt}", True
+    mS = re.match(r"(?:switch to|focus|bring up)\s+(.+)", raw)
+    if mS and mS.group(1).strip() in _APPS:
+        os_control.app_control("focus", mS.group(1).strip())
+        return f"✓ Switched to {mS.group(1).strip()}", True
+    if re.search(r"\b(what'?s running|what apps are (open|running)|what'?s (using|eating) (my )?memory|running (apps|processes))\b", raw):
+        res = os_control.list_processes(); ps = res.get("processes", [])[:6]
+        return (("Top by memory: " + ", ".join(f"{p['name']} ({p['mem_mb']} MB)" for p in ps) + ".")
+                if ps else "Couldn't read the process list."), False
+    mW = re.match(r"(minimi[sz]e|maximi[sz]e|restore)\s+(.+)", raw)
+    if mW:
+        act = "minimize" if "minim" in mW.group(1) else ("maximize" if "maxim" in mW.group(1) else "restore")
+        tgt = re.sub(r"\b(this|the|window|it)\b", "", mW.group(2)).strip() or os_control.foreground_title()
+        res = os_control.window_control(act, tgt)
+        return (f"✓ {act.capitalize()}d {tgt}" if res.get("ok") else res.get("error", "")), True
+
+    # ── folder info ──
+    if re.search(r"\b(recent downloads|recent files|latest downloads|my recent)\b", raw):
+        res = os_control.recent_files(None); fs = res.get("files", [])
+        return (("Recent: " + ", ".join(f["name"] for f in fs[:8]) + ".") if fs else "Nothing recent."), False
+    mL = re.match(r"(?:what'?s in|list)\s+(?:my |the )?(.+)", raw)
+    if mL and re.search(r"\b(folder|downloads|documents|desktop|pictures|music|videos)\b", mL.group(1)):
+        res = os_control.list_directory(re.sub(r"\b(folder|directory)\b", "", mL.group(1)).strip())
+        if res.get("ok"):
+            ents = res.get("entries", [])
+            files = [e for e in ents if not e["dir"]]; dirs = [e for e in ents if e["dir"]]
+            return f"{res['path']}: {res.get('count', len(ents))} items — {len(files)} files, {len(dirs)} folders.", False
+    mN = re.match(r"how many (?:files|items|things)(?: are)? in\s+(?:my |the )?(.+)", raw)
+    if mN:
+        res = os_control.list_directory(re.sub(r"\b(folder|directory)\b", "", mN.group(1)).strip())
+        if res.get("ok"):
+            files = [e for e in res.get("entries", []) if not e["dir"]]
+            return f"{res.get('count', 0)} items ({len(files)} files) in {res['path']}.", False
+    mH = re.match(r"how (?:big|large) is\s+(?:my |the )?(.+)", raw)
+    if mH:
+        res = os_control.path_info(re.sub(r"\b(folder|directory)\b", "", mH.group(1)).strip())
+        if res.get("ok"):
+            extra = f" ({res['files']} files)" if res.get("kind") == "folder" else ""
+            return f"{res['path']} is {res['size_mb']} MB{extra}.", False
 
     # volume
     m = re.search(r"\bvolume (?:to |at )?(\d{1,3})\b", t)
@@ -4146,7 +4359,12 @@ async def process_user_intent(payload: CommandInput, db: Session = Depends(get_d
                 "batch_rename, close_top_memory (close the biggest memory hog), personalize "
                 "(wallpaper / dark or light mode / power plan), image_tool (resize/convert/"
                 "compress), pdf_tool (merge/extract/split), and schedule_task (run something "
-                "at a set time, e.g. shut down at 23:00)."
+                "at a set time, e.g. shut down at 23:00). You can also edit a real "
+                "Microsoft Word document in place with edit_word (find-and-replace, append, "
+                "or insert text — Word opens and he watches the change land); use it for "
+                "targeted edits to a .docx, but for a full rewrite/summary/translation use "
+                "the document editor (create_document). Excel too: edit_excel to set a cell "
+                "('change B2 to 500'), append a row, or find-replace in a spreadsheet."
                 if os_control.is_enabled() else ""
             )
             convo_note = conversation_memory.recent_memories_text(db)
